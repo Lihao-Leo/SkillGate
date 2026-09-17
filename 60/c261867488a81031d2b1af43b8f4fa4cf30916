@@ -1,0 +1,26 @@
+README.md
+  s_b4fb433834ea36::t_32958c9ff4e7cc 5-22
+frontend/user-portal/src/views/LoginView.vue
+  s_b4fb433834ea36::t_78c870b0f762e9 54-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "60c261867488a81031d2b1af43b8f4fa4cf30916",
+  "prompts": {},
+  "humans": {
+    "h_feb45ae1fb8ea5": {
+      "author": "Leo <lihao@01lb.com.cn>"
+    }
+  },
+  "sessions": {
+    "s_b4fb433834ea36": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a281a26-9fcc-4f3d-a8ae-663265167022",
+        "model": "GLM-5.3-Flash"
+      },
+      "human_author": "Leo <lihao@01lb.com.cn>"
+    }
+  }
+}
