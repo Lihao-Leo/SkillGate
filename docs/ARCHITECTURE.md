@@ -46,6 +46,8 @@
 
 ### 3\.1 接入与管理服务（skill\-gateway，Java）
 
+![整体架构](images/architecture-overview.jpg)
+
 > 📊 整体架构图（可编辑画板，已按 v6\.1 重绘：结果双通道，无 sync）
 > 
 > 
@@ -137,6 +139,8 @@ MySQL（`skill_platform` / `skill_billing` 两库）· OSS（Skill 包 \+ 素材
 
 ### 4\.1 Skill 生命周期
 
+![Skill 上传与版本管理时序](images/seq-skill-upload.jpg)
+
 > 📊 **Skill 上传与版本管理时序**（可编辑画板，已按 v6\.0 重绘）
 > 
 > 
@@ -170,6 +174,8 @@ MySQL（`skill_platform` / `skill_billing` 两库）· OSS（Skill 包 \+ 素材
 **灰度口径**：V1 **不做版本级流量灰度**——新版本 = 改 default\_version 全量切换，出问题靠「失败自动退款 \+ Job 成功率监控（\<90% 日告警）\+ 秒级回滚（改标记）」兜底；任务型流量（日万级）爆炸半径可控，灰度收益低。**路由钩子已预留**：execute 显式传 version 可自选试跑；演进加 skill\.canary\_config（\{version, percent \| appKeys\[\]\}），gateway 版本解析处集中分流，执行记录 resolvedVersion 逐任务可追溯——不动 worker / billing。触发条件：开放第三方上传或单 Skill 日量 \>5 万。镜像灰度同理（sandbox\_digest 已逐任务记录，演进加按 tag 节点池 canary）。
 
 ### 4\.2 执行模型
+
+![执行时序](images/seq-execution.jpg)
 
 > 📊 执行时序（可编辑画板，已按 v6\.1 重绘：终态双通道 ①回调/②轮询）
 > 
@@ -392,6 +398,8 @@ Skill 在工作目录 `artifacts/` 下写产物文件，可选 `artifacts/manife
 - **产物上限**：单文件 ≤500MB、单任务总量 ≤2GB、文件数 ≤ maxCount×2（countable=false 的 Skill 无 maxCount，默认 ≤4）——防 OSS 滥用；超限置 FAILED（error\_code=OUTPUT\_LIMIT），退款语义同失败
 
 ### 4\.8 计费机制（点数：预冻结\-结算\-对账）
+
+![计费时序](images/seq-billing.jpg)
 
 > 📊 **计费时序**（可编辑画板：受理冻结 → 终态结算/退款 → 对账兜底三条路径）
 > 

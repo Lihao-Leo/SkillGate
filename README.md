@@ -2,6 +2,24 @@
 
 用户将技能（Skill）上传到平台，外部调用方（服务端 / agent 平台）通过网关访问技能。**网关统一承担：鉴权 · 请求转发 · 执行调度 · 用量统计 · 限流 · 监控**。
 
+![SkillGate 整体架构](docs/images/architecture-overview.jpg)
+
+- **一次请求 = 一个 Skill = 一个 taskId**：统一异步，结果回调（HMAC 签名）/ 主动轮询双通道
+- **Skill 纯黑盒 + 沙箱隔离**：每任务独立 K8s Job（非 root / 只读根文件系统 / 出口受控），支持 CODE（`main.py`）与 AGENT（`SKILL.md`）两种包类型
+- **计费前置**：预校验 → 冻结 → 按实际结算 → 失败即退，点数账户对账兜底闭环
+- **模型能力平台管**：内置 OpenAI 兼容模型网关（alias 路由 + 回退链），密钥永不下发到 Skill 包
+- **两层输入**：materials（素材）+ instructions（自然语言指令），无 Schema 校验
+
+## 页面预览
+
+| Skill 管理（管理后台） | AppKey 与入账（管理后台） |
+|---|---|
+| ![Skill 管理](docs/images/screenshots/admin-skills.png) | ![AppKey 与入账](docs/images/screenshots/admin-appkeys.png) |
+| **点数充值（用户端）** | **登录 / 注册（用户端）** |
+| ![点数充值](docs/images/screenshots/portal-recharge.png) | ![登录注册](docs/images/screenshots/portal-login.png) |
+
+> 更多时序图（上传审核 / 执行 / 计费 / 支付）见 [`docs/images/`](docs/images/)，完整技术方案见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
+
 - **一次请求 = 一个 Skill = 一个 taskId**：统一异步，结果回调（HMAC 签名）/ 主动轮询双通道
 - **Skill 纯黑盒 + 沙箱隔离**：每任务独立 K8s Job（非 root / 只读根文件系统 / 出口受控），支持 CODE（`main.py`）与 AGENT（`SKILL.md`）两种包类型
 - **计费前置**：预校验 → 冻结 → 按实际结算 → 失败即退，点数账户对账兜底闭环
