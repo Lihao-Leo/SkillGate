@@ -1,0 +1,19 @@
+README.md
+  s_b4fb433834ea36::t_eeb400637ba0b9 97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a49423170768da185a012e605fcc54f3077fe7e0",
+  "prompts": {},
+  "sessions": {
+    "s_b4fb433834ea36": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a281a26-9fcc-4f3d-a8ae-663265167022",
+        "model": "GLM-5.3-Flash"
+      },
+      "human_author": "Leo <lihao@01lb.com.cn>"
+    }
+  }
+}
