@@ -1,0 +1,14 @@
+.github/workflows/ci.yml
+  h_feb45ae1fb8ea5 1-82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3cbf24896cde65d5dceb0ae54c1c963049e9ffbf",
+  "prompts": {},
+  "humans": {
+    "h_feb45ae1fb8ea5": {
+      "author": "Leo <lihao@01lb.com.cn>"
+    }
+  }
+}
