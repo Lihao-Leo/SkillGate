@@ -1,0 +1,687 @@
+frontend/user-portal/src/views/TaskQueryView.vue
+  s_6a5b57e8643b50::t_da7c886c68f555 1-97
+skill-gateway/src/main/java/com/skill/platform/gateway/controller/ExecuteController.java
+  s_6a5b57e8643b50::t_cf7c6848f01900 1-34
+frontend/admin-console/src/views/SysConfigView.vue
+  s_6a5b57e8643b50::t_15ea7786107fed 1-80
+skill-worker/skill_worker/toolset/usage.py
+  s_6a5b57e8643b50::t_d3389753e99fb1 1-59
+skill-gateway/src/main/java/com/skill/platform/gateway/service/SkillDtos.java
+  s_6a5b57e8643b50::t_99d23285854113 1-53
+skill-gateway/src/main/java/com/skill/platform/gateway/security/CachedBodyFilter.java
+  s_6a5b57e8643b50::t_287dbd330e2d36 1-86
+frontend/user-portal/tests/api.spec.ts
+  s_6a5b57e8643b50::t_5271014d897d21 1-77
+frontend/user-portal/src/views/DashboardView.vue
+  s_6a5b57e8643b50::t_15901a9d454b28 1-97
+.gitignore
+  s_b4fb433834ea36::t_bf18f788f14feb 1-33
+frontend/admin-console/tsconfig.json
+  s_6a5b57e8643b50::t_d9a798e5b815e7 1-16
+skill-gateway/src/main/java/com/skill/platform/gateway/service/TelemetryService.java
+  s_6a5b57e8643b50::t_2ef6f98bf8ef5e 1-48
+billing-service/src/test/java/com/skill/platform/billing/BillingCoreTest.java
+  s_6a5b57e8643b50::t_a675106b49312f 1-261
+recharge-service/src/main/java/com/skill/platform/recharge/dal/entity/PaymentNotifyLog.java
+  s_6a5b57e8643b50::t_92c9904786a882 1-44
+skill-worker/skill_worker/domain.py
+  s_6a5b57e8643b50::t_1904d3305ca191 1-159
+skill-gateway/src/main/java/com/skill/platform/gateway/dal/entity/Material.java
+  s_6a5b57e8643b50::t_d5f2521b3125d6 1-57
+billing-service/src/main/java/com/skill/platform/billing/dto/ReleaseResponse.java
+  s_6a5b57e8643b50::t_f5f8d65558b167 1-7
+billing-service/src/main/java/com/skill/platform/billing/dto/AccountEnsureRequest.java
+  s_6a5b57e8643b50::t_27f8937efc3de3 1-11
+skill-gateway/src/main/java/com/skill/platform/gateway/service/ModelGatewayService.java
+  s_6a5b57e8643b50::t_2f311be631bd47 1-143
+recharge-service/src/main/java/com/skill/platform/recharge/dal/entity/UserAppKey.java
+  s_6a5b57e8643b50::t_25e82be5b06994 1-35
+skill-gateway/src/main/java/com/skill/platform/gateway/security/HmacVerifier.java
+  s_6a5b57e8643b50::t_d8feb231aaf494 1-84
+skill-worker/skill_worker/adapters/repositories.py
+  s_6a5b57e8643b50::t_a858cd215625b3 1-211
+skill-gateway/pom.xml
+  s_6a5b57e8643b50::t_c48b5bd29596c7 1-102
+skill-gateway/src/main/java/com/skill/platform/gateway/controller/HealthController.java
+  s_6a5b57e8643b50::t_b33024b030aab7 1-18
+SECURITY.md
+  s_6a5b57e8643b50::t_0d619b2a6ed61b 1-23
+skill-gateway/src/main/java/com/skill/platform/gateway/dal/mapper/SkillIoLogMapper.java
+  s_30ea7b4c1a2144::t_13ec05de61892f 1-12
+recharge-service/src/main/java/com/skill/platform/recharge/dal/mapper/UserAccountMapper.java
+  s_30ea7b4c1a2144::t_d3c21eba784983 1-12
+billing-service/src/main/java/com/skill/platform/billing/common/ErrorCode.java
+  s_6a5b57e8643b50::t_ae015e2d2ee2b4 1-44
+recharge-service/src/main/java/com/skill/platform/recharge/service/UserKeyService.java
+  s_6a5b57e8643b50::t_e0800c8d61359e 1-101
+recharge-service/src/main/java/com/skill/platform/recharge/service/jobs/CreditRetryJob.java
+  s_6a5b57e8643b50::t_7aa1ab7e10de3b 1-48
+recharge-service/src/test/java/com/skill/platform/recharge/ChannelCryptoTest.java
+  s_6a5b57e8643b50::t_204b4f8b10b48b 1-83
+skill-gateway/src/test/java/com/skill/platform/gateway/infra/S3ObjectStorageTest.java
+  s_b4fb433834ea36::t_f7b75de2b383a7 1-55
+skill-gateway/src/test/java/com/skill/platform/gateway/ApiAuthIntegrationTest.java
+  s_6a5b57e8643b50::t_900614765a1321 1-296
+skill-gateway/src/main/java/com/skill/platform/gateway/dal/mapper/SysConfigMapper.java
+  s_6a5b57e8643b50::t_1b9b85625407e5 1-9
+recharge-service/src/main/java/com/skill/platform/recharge/config/RechargeConfig.java
+  s_6a5b57e8643b50::t_3b9e98b1523efe 1-43
+billing-service/src/main/java/com/skill/platform/billing/config/BillingWebConfig.java
+  s_6a5b57e8643b50::t_83d8c5ec1a264a 1-21
+frontend/user-portal/src/views/DocsView.vue
+  s_6a5b57e8643b50::t_1322bae913cad4 1-56
+frontend/user-portal/vite.config.ts
+  s_6a5b57e8643b50::t_4d1ce92b9e88d0 1-22
+skill-gateway/src/main/java/com/skill/platform/gateway/service/MaterialPolicy.java
+  s_6a5b57e8643b50::t_9a222e128d2f4d 1-97
+recharge-service/src/main/java/com/skill/platform/recharge/service/UserAuthService.java
+  s_6a5b57e8643b50::t_173f73a6a32e11 1-144
+billing-service/src/main/java/com/skill/platform/billing/service/AlertNotifier.java
+  s_6a5b57e8643b50::t_759c5eda7c3079 1-10
+skill-gateway/src/main/java/com/skill/platform/gateway/common/Ids.java
+  s_6a5b57e8643b50::t_c92a71b0b631e4 1-54
+skill-worker/skill_worker/scheduler/main.py
+  s_6a5b57e8643b50::t_e82094d5c1deae 1-99
+recharge-service/src/main/resources/application.yml
+  s_6a5b57e8643b50::t_a16c99c4f0bf3c 1-62
+billing-service/src/main/java/com/skill/platform/billing/dto/BalanceView.java
+  s_6a5b57e8643b50::t_ee98bd3f9102e5 1-11
+billing-service/src/main/java/com/skill/platform/billing/common/ApiResponse.java
+  s_6a5b57e8643b50::t_a1dd2774cd37f2 1-21
+skill-gateway/src/main/java/com/skill/platform/gateway/infra/S3Config.java
+  s_6a5b57e8643b50::t_b22e62d9f744e6 1-56
+skill-gateway/src/test/java/com/skill/platform/gateway/MaterialServiceTest.java
+  s_6a5b57e8643b50::t_eac167f6809262 1-156
+docs/ARCHITECTURE.md
+  s_b4fb433834ea36::t_bf8808a9052896 1-1296
+frontend/admin-console/vite.config.ts
+  s_6a5b57e8643b50::t_1a80e4bb9eb8f2 1-20
+frontend/user-portal/src/stores/gwCreds.ts
+  s_6a5b57e8643b50::t_8f1756fa4529aa 1-30
+skill-gateway/src/main/java/com/skill/platform/gateway/dal/entity/Execution.java
+  s_6a5b57e8643b50::t_157175dcc36401 1-100
+recharge-service/.gitignore
+  s_6a5b57e8643b50::t_5d87cbb7bf55db 1-16
+billing-service/src/main/java/com/skill/platform/billing/dal/mapper/CreditAccountMapper.java
+  s_6a5b57e8643b50::t_963e2d8c40b175 1-57
+recharge-service/src/main/java/com/skill/platform/recharge/channel/AlipayPrecreateChannel.java
+  s_6a5b57e8643b50::t_a92bb4e5f22bef 1-181
+frontend/user-portal/src/api/index.ts
+  s_6a5b57e8643b50::t_75e608daa27998 1-176
+frontend/user-portal/tsconfig.json
+  s_6a5b57e8643b50::t_fbe91bf0677fd9 1-16
+frontend/admin-console/tests/views.spec.ts
+  s_6a5b57e8643b50::t_3b6b88f04d543b 1-221
+frontend/admin-console/src/api/gateway.ts
+  s_6a5b57e8643b50::t_c779bae3e23317 1-345
+frontend/user-portal/index.html
+  s_b4fb433834ea36::t_efa6c49d51a64f 1-12
+skill-gateway/src/main/java/com/skill/platform/gateway/infra/LocalStorageConfig.java
+  s_6a5b57e8643b50::t_c457fda4d54270 1-19
+frontend/admin-console/src/App.vue
+  s_b4fb433834ea36::t_be9dee25223609 1-169
+skill-gateway/src/main/java/com/skill/platform/gateway/common/ApiResponse.java
+  s_6a5b57e8643b50::t_6b6dd748864e63 1-19
+skill-worker/skill_worker/scheduler/artifacts.py
+  s_6a5b57e8643b50::t_5f111176ec13de 1-79
+frontend/admin-console/tests/setup.ts
+  s_6a5b57e8643b50::t_dce61bb7a154a4 1-25
+recharge-service/src/main/java/com/skill/platform/recharge/channel/ChannelRegistry.java
+  s_6a5b57e8643b50::t_c67f8b1fbe252a 1-37
+frontend/admin-console/src/api/client.ts
+  s_6a5b57e8643b50::t_3086453cdf644c 1-161
+recharge-service/src/main/java/com/skill/platform/recharge/channel/PaymentChannel.java
+  s_6a5b57e8643b50::t_31957d0fca61b8 1-48
+skill-gateway/src/main/java/com/skill/platform/gateway/dal/entity/Artifact.java
+  s_6a5b57e8643b50::t_87723cc057451b 1-44
+recharge-service/src/main/resources/application-dev.yml
+  s_6a5b57e8643b50::t_5034af387de5dd 1-19
+frontend/user-portal/src/router.ts
+  s_6a5b57e8643b50::t_69b6a097002db6 1-22
+frontend/user-portal/tests/views.spec.ts
+  s_6a5b57e8643b50::t_dad17693bceb66 1-178
+skill-worker/start.sh
+  s_6a5b57e8643b50::t_82751b0609fe45 1-6
+billing-service/src/main/java/com/skill/platform/billing/dto/HoldView.java
+  s_6a5b57e8643b50::t_85c483597715da 1-11
+skill-worker/skill_worker/adapters/oss.py
+  s_6a5b57e8643b50::t_50c62bf36cbe82 1-87
+frontend/admin-console/src/api/hmac.ts
+  s_6a5b57e8643b50::t_309ddcde62dadd 1-57
+skill-worker/tests/test_usage.py
+  s_6a5b57e8643b50::t_89c6d189c2ab55 1-56
+skill-worker/tests/fakes.py
+  s_6a5b57e8643b50::t_464e607e2b07dc 1-145
+skill-gateway/src/main/java/com/skill/platform/gateway/common/ErrorCode.java
+  s_6a5b57e8643b50::t_e1e8cb24a337cd 1-53
+billing-service/src/main/java/com/skill/platform/billing/dal/entity/BillingTransaction.java
+  s_6a5b57e8643b50::t_8f594f8d18360d 1-51
+skill-gateway/src/main/java/com/skill/platform/gateway/dal/entity/SkillVersion.java
+  s_6a5b57e8643b50::t_46699d20c60908 1-48
+skill-gateway/src/main/java/com/skill/platform/gateway/controller/TelemetryController.java
+  s_6a5b57e8643b50::t_ab2fda2f6632fd 1-32
+skill-gateway/src/main/java/com/skill/platform/gateway/service/AppKeyAdminService.java
+  s_6a5b57e8643b50::t_675c0c3e53e272 1-123
+skill-gateway/src/main/java/com/skill/platform/gateway/dal/mapper/AppKeyMapper.java
+  s_30ea7b4c1a2144::t_cee90ba9d02b80 1-12
+frontend/admin-console/index.html
+  s_b4fb433834ea36::t_d30ab383d76e62 1-12
+recharge-service/src/main/java/com/skill/platform/recharge/common/BizException.java
+  s_6a5b57e8643b50::t_bb123f1dbf798a 1-32
+skill-gateway/src/main/java/com/skill/platform/gateway/dal/mapper/ExecutionMapper.java
+  s_6a5b57e8643b50::t_d7ee3bb811721b 1-37
+skill-gateway/src/main/java/com/skill/platform/gateway/service/CountResolver.java
+  s_6a5b57e8643b50::t_b3116233fa9a28 1-49
+skill-gateway/src/main/java/com/skill/platform/gateway/service/RateLimitService.java
+  s_6a5b57e8643b50::t_97828c12950ba3 1-111
+skill-gateway/src/main/java/com/skill/platform/gateway/service/SysConfigService.java
+  s_6a5b57e8643b50::t_9a8952552a590d 1-86
+billing-service/src/main/java/com/skill/platform/billing/dal/entity/CreditAccount.java
+  s_6a5b57e8643b50::t_f3e64dec4c9638 1-36
+frontend/user-portal/src/stores/auth.ts
+  s_6a5b57e8643b50::t_efa28674cf63c2 1-28
+recharge-service/src/main/java/com/skill/platform/recharge/dal/mapper/PaymentNotifyLogMapper.java
+  s_30ea7b4c1a2144::t_9934f24202a398 1-12
+frontend/admin-console/src/main.ts
+  s_6a5b57e8643b50::t_fab781752b08a6 1-9
+skill-gateway/src/main/java/com/skill/platform/gateway/service/KbAdminService.java
+  s_6a5b57e8643b50::t_cef1512ddc3c88 1-189
+recharge-service/src/main/java/com/skill/platform/recharge/controller/HealthController.java
+  s_6a5b57e8643b50::t_48189ba84e23da 1-18
+recharge-service/src/main/java/com/skill/platform/recharge/service/OrderService.java
+  s_6a5b57e8643b50::t_c1ec325641483e 1-128
+recharge-service/src/main/java/com/skill/platform/recharge/platform/SkillPlatformClient.java
+  s_6a5b57e8643b50::t_b9d375e5cd27cc 1-33
+skill-gateway/src/main/java/com/skill/platform/gateway/service/MaterialDtos.java
+  s_6a5b57e8643b50::t_82de2edba9d2ed 1-29
+frontend/admin-console/src/views/AccountView.vue
+  s_6a5b57e8643b50::t_c00ed8f8b6e017 1-100
+recharge-service/src/main/resources/db/schema-recharge.sql
+  s_6a5b57e8643b50::t_3ad08459bf2e9b 1-93
+skill-gateway/src/main/resources/application-prod.yml
+  s_6a5b57e8643b50::t_fc3f7cb1815921 1-10
+skill-gateway/src/main/resources/application-dev.yml
+  s_6a5b57e8643b50::t_d9d3c89df13c92 1-12
+recharge-service/src/main/resources/application-prod.yml
+  s_6a5b57e8643b50::t_418868d44a4e89 1-14
+skill-gateway/src/main/java/com/skill/platform/gateway/controller/AccountController.java
+  s_6a5b57e8643b50::t_2b8a7eacc00d0f 1-40
+billing-service/src/main/java/com/skill/platform/billing/dto/FreezeRequest.java
+  s_6a5b57e8643b50::t_459810a08dbb49 1-14
+recharge-service/src/main/java/com/skill/platform/recharge/dal/mapper/VerificationCodeMapper.java
+  s_30ea7b4c1a2144::t_d623011486bd5d 1-12
+recharge-service/src/main/java/com/skill/platform/recharge/security/UserContext.java
+  s_6a5b57e8643b50::t_e212672baa546a 1-7
+skill-gateway/src/main/java/com/skill/platform/gateway/security/CallerContext.java
+  s_6a5b57e8643b50::t_588bd5baa38ad2 1-7
+recharge-service/src/main/java/com/skill/platform/recharge/dal/entity/VerificationCode.java
+  s_6a5b57e8643b50::t_a001bdd30486e1 1-33
+skill-gateway/src/main/java/com/skill/platform/gateway/controller/ExecutionController.java
+  s_6a5b57e8643b50::t_c3a25175e9595c 1-63
+skill-worker/requirements.txt
+  s_6a5b57e8643b50::t_0d7a11628b3989 1-13
+skill-worker/skill_worker/toolset/kb_query.py
+  s_6a5b57e8643b50::t_256407141b92ee 1-24
+billing-service/src/main/java/com/skill/platform/billing/dto/PageView.java
+  s_6a5b57e8643b50::t_5a7c6284b76520 1-9
+billing-service/src/main/resources/application-local.yml
+  s_6a5b57e8643b50::t_aa42dcd39f5f62 1-14
+skill-gateway/src/test/java/com/skill/platform/gateway/ModelGatewayServiceTest.java
+  s_6a5b57e8643b50::t_85dc7fc55e2569 1-147
+skill-gateway/src/main/java/com/skill/platform/gateway/infra/LocalInfraConfig.java
+  s_6a5b57e8643b50::t_e92a47036359a0 1-19
+skill-gateway/src/main/java/com/skill/platform/gateway/controller/AdminController.java
+  s_6a5b57e8643b50::t_c23388d3f842ab 1-217
+frontend/admin-console/package-lock.json
+  s_6a5b57e8643b50::t_2a0c60657bdf26 1-2436
+skill-worker/skill_worker/toolset/video_gen.py
+  s_6a5b57e8643b50::t_8651a30ab07023 1-96
+skill-gateway/src/main/resources/db/schema-local.sql
+  s_6a5b57e8643b50::t_f91cbd662c9778 1-190
+recharge-service/src/main/java/com/skill/platform/recharge/controller/NotifyController.java
+  s_6a5b57e8643b50::t_5a0839a40f191b 1-44
+skill-worker/Dockerfile
+  s_6a5b57e8643b50::t_9f10b0cef9360d 1-15
+skill-gateway/src/test/java/com/skill/platform/gateway/SkillServiceTest.java
+  s_6a5b57e8643b50::t_7ae6585ff69db3 1-333
+skill-worker/skill_worker/scheduler/callback.py
+  s_6a5b57e8643b50::t_04726849580904 1-154
+skill-gateway/src/main/java/com/skill/platform/gateway/service/AdminOpsService.java
+  s_6a5b57e8643b50::t_fff2780bfe8165 1-89
+billing-service/src/main/java/com/skill/platform/billing/dal/mapper/BillingTransactionMapper.java
+  s_6a5b57e8643b50::t_7a2e5a2f93e0e2 1-12
+billing-service/src/main/java/com/skill/platform/billing/dal/mapper/PlatformExecutionMapper.java
+  s_6a5b57e8643b50::t_42713d222d8971 1-36
+recharge-service/src/main/java/com/skill/platform/recharge/common/ApiResponse.java
+  s_6a5b57e8643b50::t_416880c44ebd3c 1-19
+billing-service/src/main/java/com/skill/platform/billing/dal/entity/BillingHold.java
+  s_6a5b57e8643b50::t_f31934e92e8711 1-46
+billing-service/src/main/resources/application.yml
+  s_6a5b57e8643b50::t_97863fd8ead769 1-32
+skill-gateway/src/main/resources/application.yml
+  s_b4fb433834ea36::t_f4fc316caa1883 1-73
+billing-service/README.md
+  s_b4fb433834ea36::t_30f7d88ce4a245 1-70
+skill-gateway/src/main/java/com/skill/platform/gateway/service/MaterialService.java
+  s_6a5b57e8643b50::t_ed68ecb5f980f6 1-157
+frontend/admin-console/src/views/ModelProvidersView.vue
+  s_6a5b57e8643b50::t_a79fe8da333451 1-175
+recharge-service/src/main/java/com/skill/platform/recharge/common/Ids.java
+  s_6a5b57e8643b50::t_c16c9c46c44d83 1-40
+billing-service/src/main/resources/application-dev.yml
+  s_6a5b57e8643b50::t_83abf457697a5f 1-18
+billing-service/src/main/java/com/skill/platform/billing/controller/HealthController.java
+  s_6a5b57e8643b50::t_40045edd21f66c 1-18
+recharge-service/src/main/java/com/skill/platform/recharge/controller/UserAuthController.java
+  s_6a5b57e8643b50::t_30a96b2ea88c17 1-56
+skill-gateway/src/main/java/com/skill/platform/gateway/security/AdminAuthInterceptor.java
+  s_6a5b57e8643b50::t_890d606c65df57 1-43
+skill-gateway/src/main/java/com/skill/platform/gateway/security/AppKeyAuthInterceptor.java
+  s_6a5b57e8643b50::t_318bb4ffbdc9e8 1-69
+frontend/user-portal/tests/stores.spec.ts
+  s_6a5b57e8643b50::t_5dc178d267f235 1-37
+billing-service/src/main/java/com/skill/platform/billing/service/impl/LogAlertNotifier.java
+  s_6a5b57e8643b50::t_da96aba6c14711 1-22
+skill-gateway/src/main/java/com/skill/platform/gateway/service/RunningCounterRepairJob.java
+  s_6a5b57e8643b50::t_791399a62bf41f 1-43
+skill-gateway/src/main/resources/db/schema-skill-platform.sql
+  s_6a5b57e8643b50::t_366d7010f37a1d 1-206
+recharge-service/src/main/java/com/skill/platform/recharge/controller/UserOrderController.java
+  s_6a5b57e8643b50::t_b0f0346a8e1324 1-48
+billing-service/src/test/java/com/skill/platform/billing/ReconcileServiceTest.java
+  s_6a5b57e8643b50::t_498c42272cede5 1-154
+billing-service/src/main/java/com/skill/platform/billing/dto/AdjustRequest.java
+  s_6a5b57e8643b50::t_7989b9c9427e11 1-13
+skill-worker/tests/test_orchestrator.py
+  s_6a5b57e8643b50::t_3f93c4a8a03fdc 1-248
+skill-worker/skill_worker/toolset/sdk.py
+  s_6a5b57e8643b50::t_cb1a2e5cc074d5 1-70
+recharge-service/src/main/java/com/skill/platform/recharge/channel/ChannelCrypto.java
+  s_6a5b57e8643b50::t_9f518cc9af54de 1-82
+billing-service/src/main/java/com/skill/platform/billing/controller/InternalBillingController.java
+  s_6a5b57e8643b50::t_c4e8e63ab2ef29 1-96
+skill-gateway/src/main/java/com/skill/platform/gateway/security/CryptoService.java
+  s_6a5b57e8643b50::t_52251fc9856411 1-58
+billing-service/src/main/java/com/skill/platform/billing/common/Ids.java
+  s_6a5b57e8643b50::t_53d5b9a42b6eca 1-24
+recharge-service/src/main/java/com/skill/platform/recharge/service/SkuService.java
+  s_6a5b57e8643b50::t_d6e539dfb1420d 1-53
+billing-service/src/main/java/com/skill/platform/billing/service/impl/BillingTxService.java
+  s_6a5b57e8643b50::t_cc73291b9e2675 1-229
+frontend/admin-console/tests/hmac.spec.ts
+  s_6a5b57e8643b50::t_040c0b6fb9f0cc 1-44
+skill-gateway/src/main/java/com/skill/platform/gateway/infra/S3ObjectStorage.java
+  s_6a5b57e8643b50::t_07c77331484d66 1-109
+billing-service/pom.xml
+  s_6a5b57e8643b50::t_e40dc03a6eea77 1-89
+billing-service/src/main/java/com/skill/platform/billing/mq/SettleMessageConsumer.java
+  s_6a5b57e8643b50::t_1625429b472421 1-95
+skill-worker/tests/test_callback.py
+  s_6a5b57e8643b50::t_85269b9af0dc3d 1-95
+skill-worker/skill_worker/toolset/llm.py
+  s_6a5b57e8643b50::t_ec5c2c1d43b5fc 1-68
+frontend/admin-console/src/views/ConnectView.vue
+  s_6a5b57e8643b50::t_75e94a873ac6be 1-119
+billing-service/src/main/java/com/skill/platform/billing/common/GlobalExceptionHandler.java
+  s_6a5b57e8643b50::t_b96d2f39a914aa 1-40
+recharge-service/src/main/java/com/skill/platform/recharge/service/NotifyService.java
+  s_6a5b57e8643b50::t_766c15fd54c866 1-105
+skill-worker/skill_worker/adapters/crypto.py
+  s_6a5b57e8643b50::t_a7086e790fe2fe 1-32
+skill-gateway/src/main/java/com/skill/platform/gateway/infra/KvStore.java
+  s_6a5b57e8643b50::t_1ee1f722f04a44 1-21
+billing-service/src/main/java/com/skill/platform/billing/dto/OverdueHold.java
+  s_6a5b57e8643b50::t_e59dd8cc1aa114 1-11
+recharge-service/src/main/resources/application-local.yml
+  s_6a5b57e8643b50::t_acbdb6c3aa6088 1-16
+recharge-service/src/main/java/com/skill/platform/recharge/security/CryptoService.java
+  s_6a5b57e8643b50::t_4a262ea122afd8 1-57
+billing-service/src/main/java/com/skill/platform/billing/config/MybatisPlusConfig.java
+  s_6a5b57e8643b50::t_74ebca9c8461e7 1-21
+skill-gateway/src/test/java/com/skill/platform/gateway/ExecutionQueryServiceTest.java
+  s_6a5b57e8643b50::t_39852e25b73d6d 1-256
+skill-gateway/src/main/java/com/skill/platform/gateway/infra/CallbackRetryProducer.java
+  s_6a5b57e8643b50::t_50e4cc251ddc7e 1-77
+frontend/user-portal/src/views/TransactionsView.vue
+  s_6a5b57e8643b50::t_202ec1f827bc5b 1-69
+frontend/admin-console/src/views/ExecutionsView.vue
+  s_6a5b57e8643b50::t_133c81fa649288 1-442
+frontend/user-portal/src/api/hmac.ts
+  s_6a5b57e8643b50::t_4ddd6d2b1dbcfa 1-47
+skill-gateway/src/main/java/com/skill/platform/gateway/service/ExecutionQueryService.java
+  s_6a5b57e8643b50::t_52fb9378530f18 1-252
+skill-gateway/src/main/java/com/skill/platform/gateway/dal/entity/Kb.java
+  s_6a5b57e8643b50::t_b84abee18ee2dd 1-32
+skill-gateway/src/main/java/com/skill/platform/gateway/infra/RocketMqExecuteMessageProducer.java
+  s_6a5b57e8643b50::t_e2c41ecd756b6b 1-77
+skill-gateway/src/main/java/com/skill/platform/gateway/dal/entity/ModelProvider.java
+  s_6a5b57e8643b50::t_0bbb790afb594c 1-53
+billing-service/src/main/resources/db/schema-local.sql
+  s_6a5b57e8643b50::t_eeb5e63b0f0c32 1-77
+recharge-service/src/main/java/com/skill/platform/recharge/dal/mapper/RechargeOrderMapper.java
+  s_6a5b57e8643b50::t_202c0e5d3601d0 1-71
+skill-gateway/src/main/java/com/skill/platform/gateway/dal/mapper/ArtifactMapper.java
+  s_30ea7b4c1a2144::t_270fb3d5fb7547 1-12
+skill-gateway/src/main/java/com/skill/platform/gateway/common/BizException.java
+  s_6a5b57e8643b50::t_163ef390b3c958 1-32
+recharge-service/src/main/java/com/skill/platform/recharge/controller/UserKeyController.java
+  s_6a5b57e8643b50::t_2b2048ac09bf5d 1-55
+skill-gateway/src/main/java/com/skill/platform/gateway/service/ModelProviderAdminService.java
+  s_6a5b57e8643b50::t_05dd727fef7673 1-108
+billing-service/src/main/java/com/skill/platform/billing/dto/ReleaseRequest.java
+  s_6a5b57e8643b50::t_1456e92e1862fc 1-11
+skill-gateway/src/test/java/com/skill/platform/gateway/ExecuteServiceTest.java
+  s_6a5b57e8643b50::t_8cfbcbf6ffb09c 1-526
+skill-worker/skill_worker/adapters/kv.py
+  s_6a5b57e8643b50::t_4e80d3f35837c6 1-108
+skill-gateway/src/main/java/com/skill/platform/gateway/dal/entity/SysConfig.java
+  s_6a5b57e8643b50::t_e409b8b662b981 1-28
+skill-gateway/src/test/java/com/skill/platform/gateway/Phase2AdminServiceTest.java
+  s_6a5b57e8643b50::t_f4d6b4b13bb768 1-113
+skill-worker/skill_worker/adapters/mq.py
+  s_6a5b57e8643b50::t_9fd87fbce1d9a1 1-143
+billing-service/src/main/java/com/skill/platform/billing/dto/SettleResponse.java
+  s_6a5b57e8643b50::t_33b971deb81f03 1-8
+billing-service/src/main/java/com/skill/platform/billing/service/impl/ReconcileServiceImpl.java
+  s_30ea7b4c1a2144::t_78d1fc60575f1c 1-181
+LICENSE
+  s_b4fb433834ea36::t_d504abefcd509a 1-202
+frontend/admin-console/package.json
+  s_6a5b57e8643b50::t_58c6739a80ad00 1-29
+skill-gateway/src/main/java/com/skill/platform/gateway/dal/mapper/MaterialMapper.java
+  s_30ea7b4c1a2144::t_37d39cd97e2423 1-12
+billing-service/src/main/java/com/skill/platform/billing/dto/ReconcileReport.java
+  s_6a5b57e8643b50::t_6022925f495454 1-10
+skill-gateway/src/main/java/com/skill/platform/gateway/dal/mapper/SkillMapper.java
+  s_30ea7b4c1a2144::t_bbee8e22440412 1-12
+recharge-service/src/main/java/com/skill/platform/recharge/security/JwtUtil.java
+  s_6a5b57e8643b50::t_738d4bd2804e1b 1-70
+billing-service/src/main/resources/application-prod.yml
+  s_6a5b57e8643b50::t_b09166bcfe7d0d 1-12
+billing-service/src/main/java/com/skill/platform/billing/dto/TransactionView.java
+  s_6a5b57e8643b50::t_2bd7acabaa2db8 1-10
+recharge-service/src/main/java/com/skill/platform/recharge/security/JwtAuthFilter.java
+  s_6a5b57e8643b50::t_dbe3eb9a7912bc 1-62
+recharge-service/pom.xml
+  s_6a5b57e8643b50::t_31f120ae6afcf9 1-82
+skill-gateway/src/main/java/com/skill/platform/gateway/service/MetricsService.java
+  s_6a5b57e8643b50::t_f54a8a589cad42 1-187
+skill-worker/tests/test_watchdog.py
+  s_6a5b57e8643b50::t_f2bf025f6c0db0 1-106
+skill-worker/.gitignore
+  s_30ea7b4c1a2144::t_02e010ea1d89a7 1-4
+frontend/admin-console/tests/credentials.spec.ts
+  s_6a5b57e8643b50::t_974e478e9bd578 1-36
+frontend/user-portal/src/views/LoginView.vue
+  s_6a5b57e8643b50::t_50aae11629531c 1-114
+skill-gateway/src/main/java/com/skill/platform/gateway/infra/NoopExecuteMessageProducer.java
+  s_6a5b57e8643b50::t_fdb6a3260b683e 1-20
+skill-worker/skill_worker/__init__.py
+  s_6a5b57e8643b50::t_3378ca1f06940f 1-11
+frontend/admin-console/src/views/SkillsView.vue
+  s_6a5b57e8643b50::t_d2cc5dd2754dc4 1-680
+skill-gateway/src/main/java/com/skill/platform/gateway/service/ExecuteDtos.java
+  s_6a5b57e8643b50::t_18ad5372b9c5db 1-79
+recharge-service/src/test/java/com/skill/platform/recharge/UserAuthTest.java
+  s_6a5b57e8643b50::t_92596694899a2b 1-159
+templates/agent-skill-bridge/main.py
+  s_6a5b57e8643b50::t_60c4af548ac4ee 1-276
+billing-service/src/main/java/com/skill/platform/billing/service/BillingService.java
+  s_6a5b57e8643b50::t_236c6f2f37120c 1-57
+skill-gateway/src/main/java/com/skill/platform/gateway/service/InvocationSpecExporter.java
+  s_6a5b57e8643b50::t_8f97ff130e7ef0 1-171
+README.md
+  s_6a5b57e8643b50::t_51f0783d4bb820 1-79
+skill-gateway/src/test/java/com/skill/platform/gateway/CountResolverTest.java
+  s_6a5b57e8643b50::t_a50573ecfd37df 1-66
+skill-gateway/README.md
+  s_b4fb433834ea36::t_accaac30e753cf 1-80
+skill-worker/skill_worker/scheduler/watchdog.py
+  s_6a5b57e8643b50::t_81a8dd66a62365 1-106
+skill-gateway/src/main/java/com/skill/platform/gateway/controller/MaterialController.java
+  s_6a5b57e8643b50::t_8310dbd6f7dae7 1-52
+billing-service/src/test/java/com/skill/platform/billing/InternalApiTest.java
+  s_6a5b57e8643b50::t_750e2e428cf0ba 1-121
+skill-gateway/src/main/java/com/skill/platform/gateway/billing/HttpBillingClient.java
+  s_6a5b57e8643b50::t_7148dfde60949e 1-219
+skill-gateway/src/main/java/com/skill/platform/gateway/dal/entity/SkillIoLog.java
+  s_6a5b57e8643b50::t_f896b271b34b96 1-40
+skill-worker/tests/test_crypto.py
+  s_6a5b57e8643b50::t_ff2aabc9b835ec 1-41
+skill-worker/skill_worker/config.py
+  s_b4fb433834ea36::t_d9db2b031af31a 1-124
+skill-gateway/src/main/java/com/skill/platform/gateway/dal/entity/KbDocument.java
+  s_6a5b57e8643b50::t_c93ea624e60d76 1-33
+billing-service/src/main/java/com/skill/platform/billing/dal/mapper/BillingHoldMapper.java
+  s_6a5b57e8643b50::t_1720bdae70a00d 1-43
+skill-gateway/src/main/java/com/skill/platform/gateway/service/CallbackUrlValidator.java
+  s_6a5b57e8643b50::t_66dbdf79e5a52e 1-96
+recharge-service/src/main/java/com/skill/platform/recharge/common/ErrorCode.java
+  s_6a5b57e8643b50::t_0146b8aaaa6349 1-40
+recharge-service/src/main/java/com/skill/platform/recharge/channel/WeChatNativeChannel.java
+  s_6a5b57e8643b50::t_ee6a6f155c35b8 1-183
+skill-worker/sandbox-images/base-python/skill-entrypoint.sh
+  s_6a5b57e8643b50::t_4a578fccc852f4 1-33
+billing-service/src/main/resources/db/schema-skill-billing.sql
+  s_6a5b57e8643b50::t_2f114115afb1cd 1-50
+skill-worker/README.md
+  s_b4fb433834ea36::t_c24a2471cb80a0 1-70
+recharge-service/src/main/java/com/skill/platform/recharge/dal/mapper/UserAppKeyMapper.java
+  s_30ea7b4c1a2144::t_1567d53a30cce1 1-12
+skill-gateway/src/main/java/com/skill/platform/gateway/common/GlobalExceptionHandler.java
+  s_6a5b57e8643b50::t_8af527f9a2c1e0 1-47
+skill-gateway/src/main/java/com/skill/platform/gateway/service/ExecuteService.java
+  s_6a5b57e8643b50::t_2d888798d3894c 1-422
+frontend/user-portal/tests/setup.ts
+  s_6a5b57e8643b50::t_46fe83258a1946 1-25
+skill-worker/skill_worker/adapters/db.py
+  s_6a5b57e8643b50::t_5049969e4c750a 1-101
+frontend/admin-console/src/stores/credentials.ts
+  s_6a5b57e8643b50::t_fae0e1fd0aac09 1-54
+frontend/user-portal/src/App.vue
+  s_b4fb433834ea36::t_540d8825a230e8 1-175
+recharge-service/src/test/java/com/skill/platform/recharge/RechargeJobsTest.java
+  s_6a5b57e8643b50::t_8933094a243688 1-169
+skill-worker/skill_worker/adapters/k8s.py
+  s_6a5b57e8643b50::t_5706013818f7ca 1-379
+frontend/admin-console/src/views/AppKeysView.vue
+  s_6a5b57e8643b50::t_24eee4b3300de3 1-179
+skill-gateway/src/test/java/com/skill/platform/gateway/InvocationSpecExporterTest.java
+  s_6a5b57e8643b50::t_9372f51a1d02ba 1-68
+frontend/user-portal/package-lock.json
+  s_6a5b57e8643b50::t_c5201fbb41c813 1-2752
+recharge-service/src/main/java/com/skill/platform/recharge/channel/MockChannel.java
+  s_6a5b57e8643b50::t_d98f17b7e802e4 1-91
+recharge-service/README.md
+  s_b4fb433834ea36::t_1bd65972940de9 1-97
+skill-gateway/src/main/java/com/skill/platform/gateway/dal/mapper/KbMapper.java
+  s_6a5b57e8643b50::t_0595dc427c5d9c 1-9
+skill-gateway/src/test/java/com/skill/platform/gateway/CryptoServiceTest.java
+  s_6a5b57e8643b50::t_3dc60c17a12efb 1-53
+billing-service/src/main/java/com/skill/platform/billing/service/ReconcileService.java
+  s_6a5b57e8643b50::t_dcb2c192ef7197 1-12
+skill-worker/skill_worker/scheduler/usage.py
+  s_6a5b57e8643b50::t_3c0c40d9cb3a40 1-31
+skill-gateway/src/main/java/com/skill/platform/gateway/config/WebConfig.java
+  s_6a5b57e8643b50::t_07675980787c88 1-32
+skill-worker/tests/test_toolset.py
+  s_6a5b57e8643b50::t_cd0d58f40da52d 1-212
+frontend/user-portal/src/main.ts
+  s_6a5b57e8643b50::t_50a266cca6ebd6 1-8
+skill-worker/sandbox-images/base-python/Dockerfile
+  s_6a5b57e8643b50::t_19e30950e4c4ea 1-25
+recharge-service/src/test/java/com/skill/platform/recharge/OrderLifecycleTest.java
+  s_6a5b57e8643b50::t_95bdbdacc9b28e 1-290
+skill-worker/sandbox-images/base-python/agent_runner.py
+  s_6a5b57e8643b50::t_41d2bb95cfdf90 1-382
+billing-service/.gitignore
+  s_6a5b57e8643b50::t_12f05cc602515c 1-39
+billing-service/src/main/java/com/skill/platform/billing/dto/RechargeRequest.java
+  s_6a5b57e8643b50::t_618917abc45a6e 1-15
+frontend/admin-console/tests/client.spec.ts
+  s_6a5b57e8643b50::t_4a6eddb1c930ba 1-126
+skill-gateway/src/test/java/com/skill/platform/gateway/CallbackUrlValidatorTest.java
+  s_6a5b57e8643b50::t_4e50ccf23b256a 1-99
+recharge-service/src/main/resources/db/schema-local.sql
+  s_6a5b57e8643b50::t_d81caa55d00c7a 1-87
+recharge-service/src/main/java/com/skill/platform/recharge/service/jobs/OrderExpireJob.java
+  s_6a5b57e8643b50::t_ff388fff28f05b 1-80
+billing-service/src/main/java/com/skill/platform/billing/config/InternalAuthInterceptor.java
+  s_6a5b57e8643b50::t_0472a8a728eb96 1-43
+billing-service/src/main/java/com/skill/platform/billing/BillingServiceApplication.java
+  s_6a5b57e8643b50::t_adf37867b375c4 1-25
+skill-gateway/src/main/java/com/skill/platform/gateway/infra/InMemoryObjectStorage.java
+  s_6a5b57e8643b50::t_8f18e262cd9317 1-54
+skill-worker/pytest.ini
+  s_6a5b57e8643b50::t_7f8e5c19486386 1-3
+skill-gateway/.gitignore
+  s_6a5b57e8643b50::t_874a8bec001bf2 1-39
+skill-gateway/src/main/java/com/skill/platform/gateway/billing/BillingClient.java
+  s_6a5b57e8643b50::t_a5eabc820ae74c 1-34
+billing-service/src/main/java/com/skill/platform/billing/dto/RechargeResult.java
+  s_6a5b57e8643b50::t_7b031f30ab2517 1-8
+recharge-service/src/main/java/com/skill/platform/recharge/common/GlobalExceptionHandler.java
+  s_6a5b57e8643b50::t_2477b31c4f0434 1-46
+skill-gateway/src/main/java/com/skill/platform/gateway/infra/RedisKvStore.java
+  s_6a5b57e8643b50::t_38285dd990282d 1-49
+skill-gateway/src/main/java/com/skill/platform/gateway/dal/entity/AppKey.java
+  s_6a5b57e8643b50::t_9d832c55f58a7f 1-40
+skill-worker/tests/test_billing_adapter.py
+  s_6a5b57e8643b50::t_6fca19a7ac79b6 1-69
+skill-gateway/src/main/resources/application-local.yml
+  s_6a5b57e8643b50::t_b01cbea97569ff 1-11
+skill-gateway/src/main/java/com/skill/platform/gateway/controller/SkillController.java
+  s_6a5b57e8643b50::t_09312b358811e3 1-169
+docker-compose.yml
+  s_6a5b57e8643b50::t_e4883940c20343 1-58
+skill-worker/skill_worker/common.py
+  s_6a5b57e8643b50::t_f51913516e4125 1-11
+skill-gateway/src/main/java/com/skill/platform/gateway/infra/StorageProperties.java
+  s_6a5b57e8643b50::t_8a2acbcf87858a 1-77
+skill-worker/tests/test_artifacts.py
+  s_6a5b57e8643b50::t_b86b8568cb2a86 1-68
+billing-service/src/main/resources/db/schema-skill-platform-dev.sql
+  s_30ea7b4c1a2144::t_e01168913215c4 1-199
+frontend/user-portal/src/views/RechargeView.vue
+  s_6a5b57e8643b50::t_3ba0a20d35d985 1-301
+frontend/user-portal/package.json
+  s_6a5b57e8643b50::t_940c7b83d8e2a0 1-30
+skill-gateway/src/main/java/com/skill/platform/gateway/SkillGatewayApplication.java
+  s_6a5b57e8643b50::t_93d1e6ec15114e 1-25
+skill-worker/skill_worker/adapters/billing.py
+  s_6a5b57e8643b50::t_97b0890a70ab3f 1-58
+recharge-service/src/main/java/com/skill/platform/recharge/dal/entity/Sku.java
+  s_6a5b57e8643b50::t_33a3d00b3527ce 1-36
+skill-gateway/src/main/java/com/skill/platform/gateway/dal/entity/Skill.java
+  s_6a5b57e8643b50::t_2602718a0dafa7 1-71
+frontend/user-portal/tests/hmac.spec.ts
+  s_6a5b57e8643b50::t_3f23fb66a779e0 1-21
+recharge-service/src/main/java/com/skill/platform/recharge/dal/entity/UserAccount.java
+  s_6a5b57e8643b50::t_24874e66b7edf9 1-32
+billing-service/src/main/java/com/skill/platform/billing/service/impl/ReconcileScheduler.java
+  s_6a5b57e8643b50::t_e0d3857643d0cf 1-34
+frontend/admin-console/src/views/KbView.vue
+  s_6a5b57e8643b50::t_b0efcdf94be394 1-194
+skill-gateway/src/test/java/com/skill/platform/gateway/HmacVerifierTest.java
+  s_6a5b57e8643b50::t_eb836d2a575070 1-68
+recharge-service/src/main/java/com/skill/platform/recharge/service/CreditService.java
+  s_6a5b57e8643b50::t_8207c4d1b4605a 1-115
+billing-service/src/main/java/com/skill/platform/billing/dto/SettleRequest.java
+  s_6a5b57e8643b50::t_a7f9a506d2fddc 1-15
+skill-gateway/src/main/java/com/skill/platform/gateway/config/GatewayConfig.java
+  s_6a5b57e8643b50::t_f5116e7c8cd1c7 1-39
+recharge-service/src/main/java/com/skill/platform/recharge/platform/HttpSkillPlatformClient.java
+  s_6a5b57e8643b50::t_c031d82894e2fe 1-122
+templates/agent-skill-bridge/skill.json
+  s_6a5b57e8643b50::t_d3c90428a02095 1-19
+recharge-service/src/main/java/com/skill/platform/recharge/RechargeServiceApplication.java
+  s_6a5b57e8643b50::t_27b17a474f8aaf 1-25
+skill-gateway/src/main/java/com/skill/platform/gateway/infra/ExecuteMessageProducer.java
+  s_6a5b57e8643b50::t_a3988a8fae4190 1-9
+skill-gateway/src/main/java/com/skill/platform/gateway/infra/ObjectStorage.java
+  s_6a5b57e8643b50::t_c2180c36638d95 1-35
+skill-gateway/src/main/java/com/skill/platform/gateway/service/DnsResolver.java
+  s_6a5b57e8643b50::t_7c6c3858918e4b 1-12
+skill-worker/skill_worker/toolset/__init__.py
+  s_6a5b57e8643b50::t_81b1e1737bfbb7 1-7
+templates/agent-skill-bridge/README.md
+  s_6a5b57e8643b50::t_377b273289757c 1-47
+billing-service/src/main/java/com/skill/platform/billing/service/impl/BillingServiceImpl.java
+  s_6a5b57e8643b50::t_5ea6646edca540 1-162
+frontend/admin-console/src/styles.css
+  s_6a5b57e8643b50::t_086e32fd504b1d 1-111
+skill-gateway/src/main/java/com/skill/platform/gateway/service/AccountService.java
+  s_6a5b57e8643b50::t_73a53ad9a8b593 1-27
+frontend/user-portal/src/views/KeysView.vue
+  s_6a5b57e8643b50::t_f17389ebc71d77 1-141
+skill-gateway/src/main/java/com/skill/platform/gateway/billing/BillingViews.java
+  s_6a5b57e8643b50::t_cbba327c652285 1-39
+skill-gateway/src/main/java/com/skill/platform/gateway/dal/mapper/KbDocumentMapper.java
+  s_6a5b57e8643b50::t_12dbdb94f00fdd 1-9
+skill-gateway/src/main/java/com/skill/platform/gateway/dal/mapper/SkillVersionMapper.java
+  s_30ea7b4c1a2144::t_c89491e5a3117b 1-12
+skill-gateway/src/main/java/com/skill/platform/gateway/dal/mapper/ModelProviderMapper.java
+  s_6a5b57e8643b50::t_3ce83fa3bc90ac 1-9
+billing-service/src/test/java/com/skill/platform/billing/BillingConcurrencyTest.java
+  s_6a5b57e8643b50::t_4a74b0b36b6c2a 1-136
+billing-service/src/main/java/com/skill/platform/billing/dto/FreezeResponse.java
+  s_6a5b57e8643b50::t_057c9e92b45f9e 1-7
+skill-gateway/src/main/java/com/skill/platform/gateway/service/JsonCodec.java
+  s_6a5b57e8643b50::t_5dd804e9c432cc 1-84
+skill-gateway/src/test/java/com/skill/platform/gateway/infra/StoragePropertiesTest.java
+  s_6a5b57e8643b50::t_cf2be5e97902cb 1-73
+frontend/admin-console/src/router.ts
+  s_6a5b57e8643b50::t_364d9064afae45 1-24
+recharge-service/src/main/java/com/skill/platform/recharge/dal/entity/RechargeOrder.java
+  s_6a5b57e8643b50::t_351a2a5a150e66 1-73
+recharge-service/src/main/resources/db/data-local.sql
+  s_6a5b57e8643b50::t_7b1d4ebacb7a73 1-9
+skill-gateway/src/main/java/com/skill/platform/gateway/service/SkillService.java
+  s_6a5b57e8643b50::t_fd0982fd9f0956 1-512
+recharge-service/src/main/java/com/skill/platform/recharge/dal/mapper/SkuMapper.java
+  s_30ea7b4c1a2144::t_eedc75c46b8b5f 1-12
+billing-service/src/main/java/com/skill/platform/billing/common/BizException.java
+  s_6a5b57e8643b50::t_fb8783c3215c75 1-22
+skill-worker/skill_worker/scheduler/orchestrator.py
+  s_6a5b57e8643b50::t_9c721d685d9e01 1-264
+skill-gateway/src/main/java/com/skill/platform/gateway/controller/MarketplaceController.java
+  s_6a5b57e8643b50::t_614b8ea4d45c87 1-27
+skill-gateway/src/main/java/com/skill/platform/gateway/infra/InMemoryKvStore.java
+  s_6a5b57e8643b50::t_d7a045c0c7b7ed 1-57
+recharge-service/src/main/resources/db/data-recharge.sql
+  s_6a5b57e8643b50::t_d3b6680434632e 1-15
+skill-gateway/src/main/java/com/skill/platform/gateway/controller/ModelGatewayController.java
+  s_6a5b57e8643b50::t_f1e4e3984f5cde 1-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c9d5881e8d54f74f06c2356c53b9eb35cc63e200",
+  "prompts": {},
+  "sessions": {
+    "s_30ea7b4c1a2144": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "216b2ff1-0da0-497a-9528-7b06af0851bc",
+        "model": "glm-5.3"
+      },
+      "human_author": "Leo <lihao@01lb.com.cn>"
+    },
+    "s_6a5b57e8643b50": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "de1fd32a-e3d3-46c0-99d6-86f2cfa4f942",
+        "model": "glm-5.3"
+      },
+      "human_author": "Leo <lihao@01lb.com.cn>"
+    },
+    "s_b4fb433834ea36": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a281a26-9fcc-4f3d-a8ae-663265167022",
+        "model": "GLM-5.3-Flash"
+      },
+      "human_author": "Leo <lihao@01lb.com.cn>"
+    }
+  }
+}
