@@ -94,4 +94,4 @@ skill-platform/
 
 ## License
 
-待定（建议 Apache-2.0 或 MIT，见发布说明）
+本项目基于 [Apache License 2.0](LICENSE) 开源。
