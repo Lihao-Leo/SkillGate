@@ -1,0 +1,31 @@
+README.md
+  s_b4fb433834ea36::t_32958c9ff4e7cc 5-22
+docs/ARCHITECTURE.md
+  s_b4fb433834ea36::t_b26a4ed9af181f 178
+  s_b4fb433834ea36::t_bf8808a9052896 179
+  s_b4fb433834ea36::t_fb9a9ec82e7be8 49-50,142-143
+  s_b4fb433834ea36::t_8b27726ae8877f 402-403
+frontend/user-portal/src/views/LoginView.vue
+  s_b4fb433834ea36::t_78c870b0f762e9 54-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7f656aae042cd38d52141c5e8f6049c0dc9f5c6e",
+  "prompts": {},
+  "humans": {
+    "h_feb45ae1fb8ea5": {
+      "author": "Leo <lihao@01lb.com.cn>"
+    }
+  },
+  "sessions": {
+    "s_b4fb433834ea36": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a281a26-9fcc-4f3d-a8ae-663265167022",
+        "model": "GLM-5.3-Flash"
+      },
+      "human_author": "Leo <lihao@01lb.com.cn>"
+    }
+  }
+}
