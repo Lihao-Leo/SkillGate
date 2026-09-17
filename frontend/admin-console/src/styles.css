@@ -1,0 +1,111 @@
+/* 管理后台全局设计系统：深色侧栏 + 浅灰内容区 + 白色卡片 + 靛蓝主色 */
+
+:root {
+  /* Element Plus 主色覆盖（设计稿主色：靛蓝） */
+  --el-color-primary: #2b7fff;
+  --el-color-primary-light-3: #6c86f8;
+  --el-color-primary-light-5: #9aacfb;
+  --el-color-primary-light-7: #c7d1fd;
+  --el-color-primary-light-8: #dde3fe;
+  --el-color-primary-light-9: #eef1fe;
+  --el-color-primary-dark-2: #1f66d6;
+
+  --brand-gradient: linear-gradient(135deg, #2b7fff 0%, #4b5bf5 100%);
+  --sidebar-bg: #ffffff;
+  --page-bg: #f5f6fa;
+  --card-border: #eef0f4;
+  --text-title: #101828;
+  --text-sub: #667085;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  color: var(--text-title);
+  background: var(--page-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 页面骨架 */
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.page-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+.page-header .sub {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-sub);
+}
+
+/* 卡片 */
+.el-card {
+  border-radius: 12px;
+  border: 1px solid var(--card-border);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+.el-card__header {
+  font-weight: 600;
+  border-bottom: 1px solid var(--card-border);
+}
+
+/* 统计卡片行 */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.stat-card {
+  border-radius: 12px;
+  padding: 18px 20px;
+  background: #fff;
+  border: 1px solid var(--card-border);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.stat-card .icon-chip {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  flex: none;
+}
+.stat-card .label { font-size: 13px; color: var(--text-sub); }
+.stat-card .value { font-size: 24px; font-weight: 700; line-height: 1.2; }
+
+/* 工具条与表格 */
+.toolbar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+
+.el-table { --el-table-header-bg-color: #f7f8fc; }
+.el-table th.el-table__cell { font-weight: 600; color: #475467; }
+
+.pos { color: #12b76a; font-weight: 600; }
+.neg { color: #f04438; font-weight: 600; }
+.mono { font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace; }
+
+/* 一次性密钥展示 */
+.secret-line {
+  font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
+  word-break: break-all;
+  margin: 8px 0;
+  background: #f7f8fc;
+  border: 1px dashed #d0d5dd;
+  border-radius: 8px;
+  padding: 10px 12px;
+}

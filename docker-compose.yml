@@ -1,0 +1,58 @@
+version: "3.8"
+
+# SkillGate 本地开发基础设施：MySQL 8 / Redis / RocketMQ 5
+# 用法：docker compose up -d
+# 应用配置经各服务 application-dev.yml / skill-worker/.env 连接 127.0.0.1
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: skillgate-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root123456
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # 首次启动自动建库（三个库一次就位）
+      - ./skill-gateway/src/main/resources/db/schema-skill-platform.sql:/docker-entrypoint-initdb.d/01_skill_platform.sql:ro
+      - ./billing-service/src/main/resources/db/schema-skill-billing.sql:/docker-entrypoint-initdb.d/02_skill_billing.sql:ro
+      - ./recharge-service/src/main/resources/db/schema-recharge.sql:/docker-entrypoint-initdb.d/03_recharge.sql:ro
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_general_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot123456"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: skillgate-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  rocketmq-namesrv:
+    image: apache/rocketmq:5.3.1
+    container_name: skillgate-mq-namesrv
+    command: sh mqnamesrv
+    ports:
+      - "9876:9876"
+
+  rocketmq-broker:
+    image: apache/rocketmq:5.3.1
+    container_name: skillgate-mq-broker
+    depends_on:
+      - rocketmq-namesrv
+    # brokerIP1=127.0.0.1：本机联调；远程/容器内部署需改为宿主机可达地址
+    command: sh -c "echo brokerIP1=127.0.0.1 > /home/rocketmq/broker.conf && sh mqbroker -n rocketmq-namesrv:9876 -c /home/rocketmq/broker.conf --enable-proxy"
+    ports:
+      - "8081:8081"   # gRPC Proxy（worker / gateway 客户端）
+      - "10909:10909"
+      - "10911:10911"
+
+volumes:
+  mysql-data:
+  redis-data:

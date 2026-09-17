@@ -1,0 +1,10 @@
+# prod：MySQL skill_platform 分库；Redis/RocketMQ/OSS 经环境变量注入（K8s Secret）
+spring:
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/skill_platform?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=true
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: ${MYSQL_USER:skill_platform}
+    password: ${MYSQL_PASSWORD:}
+  data:
+    redis:
+      password: ${REDIS_PASSWORD:}

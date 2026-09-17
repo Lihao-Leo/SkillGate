@@ -1,0 +1,32 @@
+# 公共配置：与环境无关的部分（profile 差异见 application-{local,dev,prod}.yml）
+spring:
+  application:
+    name: billing-service
+  profiles:
+    default: dev
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  jackson:
+    default-property-inclusion: non_null
+
+server:
+  port: 8081
+  shutdown: graceful
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+skill-billing:
+  internal-token: ${INTERNAL_TOKEN:change-me-internal-token}
+  reconcile:
+    enabled: true
+    cron: "0 */5 * * * ?"
+    overdue-hours: 24
+  mq:
+    # skill-settle 兜底重试消费：local 关闭（Noop），dev/prod 开启（见各 profile 文件）
+    enabled: false
+    name-server: ${ROCKETMQ_NAMESRV:127.0.0.1:9876}
+    consumer-group: billing_settle_group
+    topic: skill-settle

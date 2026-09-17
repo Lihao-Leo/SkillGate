@@ -1,0 +1,11 @@
+# local：零外部依赖单进程自洽（H2 + 进程内 KV/存储/Noop MQ）
+spring:
+  datasource:
+    url: jdbc:h2:mem:gateway;MODE=MySQL;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema-local.sql

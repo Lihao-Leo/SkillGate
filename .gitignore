@@ -1,0 +1,33 @@
+# ---- 凭证与环境（永不入库） ----
+.env
+*.local.env
+.env.*
+
+# ---- Python ----
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# ---- Java ----
+target/
+*.class
+
+# ---- 前端 ----
+node_modules/
+dist/
+
+# ---- IDE / 系统 ----
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# ---- 日志与临时 ----
+*.log
+/tmp/
+
+# ---- 内部文档与本地工具（不随开源发布） ----
+ai-coding-output/
+.claude/
+.map/

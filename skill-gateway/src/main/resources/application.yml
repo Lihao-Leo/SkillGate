@@ -1,0 +1,73 @@
+# 公共配置：与环境无关的部分（profile 差异见 application-{local,dev,prod}.yml）
+spring:
+  application:
+    name: skill-gateway
+  profiles:
+    default: dev
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  jackson:
+    default-property-inclusion: non_null
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 105MB
+  data:
+    redis:
+      # dev/local 直连本机；prod 经 REDIS_HOST/REDIS_PORT 环境变量注入
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+
+server:
+  port: 8888
+  shutdown: graceful
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+skill-platform:
+  # AppSecret / 供应商 Key 加密密钥（base64 32B；生产经 Secret 注入，此处为本地开发值）
+  crypto-key: ${CRYPTO_KEY:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
+  admin-token: ${ADMIN_TOKEN:change-me-admin-token}
+  recharge-url: ${RECHARGE_URL:https://recharge.example.com}
+  public-base-url: ${PUBLIC_BASE_URL:http://localhost:8888}
+  quota:
+    qps: 10
+    max-running: 50
+    daily-limit: 10000
+  callback:
+    allow-reserved: false
+  skill:
+    max-package-size: 209715200
+  running-repair:
+    enabled: true
+    cron: "30 * * * * ?"
+  billing:
+    base-url: ${BILLING_BASE_URL:http://localhost:8081}
+    internal-token: ${INTERNAL_TOKEN:dev-internal-token}
+  mq:
+    name-server: ${ROCKETMQ_NAMESRV:127.0.0.1:9876}
+    producer-group: gateway_execute_group
+    topic: skill-execute
+  storage:
+    # 对象存储（S3 兼容）：provider 决定生效哪个供应商的配置块（oss / cos），配哪个生效哪个
+    provider: ${STORAGE_PROVIDER:cos}
+    # 所有对象统一落在桶内该目录下（worker 侧 OSS_KEY_PREFIX 必须与此一致）
+    key-prefix: ${STORAGE_KEY_PREFIX:skill-platform/}
+    oss:
+      # 阿里云 OSS：endpoint/region 与桶实际区域一致（桶名全局唯一，需先在控制台建桶）
+      endpoint: ${OSS_ENDPOINT:https://oss-cn-shenzhen.aliyuncs.com}
+      region: ${OSS_REGION:cn-shenzhen}
+      bucket: ${OSS_BUCKET:skill-platform}
+      access-key: ${OSS_ACCESS_KEY:}
+      secret-key: ${OSS_SECRET_KEY:}
+    cos:
+      # 腾讯云 COS：桶名需带 APPID 后缀；endpoint 必须用标准端点（cos.<region>.myqcloud.com）
+      # 自定义 CDN 域名不支持 S3 签名 API，实测 403，勿用
+      endpoint: ${COS_ENDPOINT:https://cos.ap-guangzhou.myqcloud.com}
+      region: ${COS_REGION:ap-guangzhou}
+      bucket: ${COS_BUCKET:}
+      access-key: ${COS_ACCESS_KEY:}
+      secret-key: ${COS_SECRET_KEY:}

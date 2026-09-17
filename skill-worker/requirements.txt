@@ -1,0 +1,13 @@
+# skill-worker 生产依赖（scheduler Deployment）
+# 核心链路：MySQL(skill_platform) + Redis + OSS(S3 兼容) + K8s + billing HTTP
+pymysql>=1.1
+redis>=5.0
+boto3>=1.34
+kubernetes>=29.0
+
+# MQ：RocketMQ 客户端依赖本地 C++ 库（librocketmq），按部署环境启用后取消注释
+# rocketmq-client-python>=2.0.0
+
+# 沙箱镜像内 toolset 依赖（sandbox-images/*/Dockerfile 中安装）
+# cryptography>=42.0
+# requests>=2.31

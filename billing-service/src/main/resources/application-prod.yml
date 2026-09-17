@@ -1,0 +1,12 @@
+# prod：MySQL skill_billing 分库（与 skill_platform 同实例）；RocketMQ 消费开启
+spring:
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/skill_billing?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=true
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: ${MYSQL_USER:skill_billing}
+    password: ${MYSQL_PASSWORD:}
+
+skill-billing:
+  platform-schema: skill_platform
+  mq:
+    enabled: true

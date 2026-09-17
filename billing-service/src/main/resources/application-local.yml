@@ -1,0 +1,14 @@
+# local：零外部依赖单进程自洽（H2，MQ 消费关闭）
+spring:
+  datasource:
+    url: jdbc:h2:mem:billing;MODE=MySQL;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema-local.sql
+
+skill-billing:
+  internal-token: dev-internal-token

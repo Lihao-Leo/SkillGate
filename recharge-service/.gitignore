@@ -1,0 +1,16 @@
+# Compiled / packaged
+target/
+*.class
+*.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+logs/

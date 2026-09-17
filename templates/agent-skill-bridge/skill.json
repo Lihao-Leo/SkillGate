@@ -1,0 +1,19 @@
+{
+  "bridge": {
+    "entryDoc": "SKILL.md",
+    "contextFiles": [
+      "references/output-schema.md",
+      "references/tagging-rules.md",
+      "references/persona-scorecard.md"
+    ],
+    "contextBudget": 40000,
+    "model": "llm-text",
+    "pipeline": [
+      {"cmd": "scripts/render_output.py", "args": "{data} --out {out}/persona.md",
+       "artifact": "persona.md", "required": true},
+      {"cmd": "scripts/render_report.py", "args": "{data} --out {out}/report.html",
+       "artifact": "report.html"}
+    ],
+    "check": "scripts/persona_check.py"
+  }
+}

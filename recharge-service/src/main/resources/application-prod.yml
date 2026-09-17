@@ -1,0 +1,14 @@
+# prod：MySQL recharge 独立库；Mock 渠道与验证码回显必须关闭
+spring:
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/recharge?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=true
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: ${MYSQL_USER:recharge}
+    password: ${MYSQL_PASSWORD:}
+
+recharge:
+  auth:
+    dev-echo-code: false
+  channels:
+    mock:
+      enabled: false

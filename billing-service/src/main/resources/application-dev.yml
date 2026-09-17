@@ -1,0 +1,18 @@
+# dev：本地真实基础设施（dev-skill 单库承载 billing + platform 全部表；RocketMQ 消费开启）
+spring:
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/dev-skill?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root123456}
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema-skill-billing.sql,classpath:db/schema-skill-platform-dev.sql
+
+skill-billing:
+  internal-token: dev-internal-token
+  # dev 单库：platform 表与 billing 表同库；生产为同实例分库 skill_platform
+  platform-schema: dev-skill
+  mq:
+    enabled: true

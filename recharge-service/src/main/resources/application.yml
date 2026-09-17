@@ -1,0 +1,62 @@
+# 公共配置：与环境无关的部分（profile 差异见 application-{local,dev,prod}.yml）
+spring:
+  application:
+    name: recharge-service
+  profiles:
+    default: dev
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  jackson:
+    default-property-inclusion: non_null
+
+server:
+  port: 8082
+  shutdown: graceful
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+recharge:
+  # JWT 会话密钥与待展示密钥加密密钥（生产经 Secret 注入，此处为本地开发值）
+  jwt:
+    secret: ${JWT_SECRET:dev-jwt-secret-change-me}
+    ttl-days: 7
+  crypto-key: ${CRYPTO_KEY:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
+  auth:
+    # 本地/联调回显验证码（生产必须 false）
+    dev-echo-code: ${DEV_ECHO_CODE:true}
+  platform:
+    # gateway 管理面（§5.7 admin：签发与入账为主路径，专属凭据最小权限）
+    base-url: ${GATEWAY_BASE_URL:http://localhost:8888}
+    admin-token: ${GATEWAY_ADMIN_TOKEN:change-me-admin-token}
+  custom-amount:
+    min-fen: 100        # 1 元
+    max-fen: 1000000    # 1 万元
+  channels:
+    mock:
+      enabled: true     # local 默认 Mock 渠道；生产 false
+      secret: ${MOCK_CHANNEL_SECRET:dev-mock-channel-secret}
+    wechat:
+      enabled: false    # 生产开启并注入商户凭据（Secret，永不落日志）
+      appid: ${WECHAT_APPID:}
+      mchid: ${WECHAT_MCHID:}
+      merchant-serial: ${WECHAT_MERCHANT_SERIAL:}
+      merchant-private-key: ${WECHAT_MERCHANT_PRIVATE_KEY:}
+      platform-public-key: ${WECHAT_PLATFORM_PUBLIC_KEY:}
+      apiv3-key: ${WECHAT_APIV3_KEY:}
+      notify-url: ${WECHAT_NOTIFY_URL:https://recharge.example.com/api/notify/WECHAT/pay}
+    alipay:
+      enabled: false    # V1 预留
+      app-id: ${ALIPAY_APP_ID:}
+      merchant-private-key: ${ALIPAY_PRIVATE_KEY:}
+      alipay-public-key: ${ALIPAY_PUBLIC_KEY:}
+      notify-url: ${ALIPAY_NOTIFY_URL:https://recharge.example.com/api/notify/ALIPAY/pay}
+  jobs:
+    credit-retry:
+      enabled: true
+      cron: "20 * * * * ?"
+    order-expire:
+      enabled: true
+      cron: "40 * * * * ?"

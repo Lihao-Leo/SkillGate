@@ -1,0 +1,19 @@
+# dev：本地真实基础设施（dev-skill 单库承载 recharge 全部表；gateway 端口 8888）
+spring:
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/dev-skill?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root123456}
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema-recharge.sql
+      data-locations: classpath:db/data-recharge.sql
+
+recharge:
+  auth:
+    dev-echo-code: true
+  platform:
+    base-url: http://127.0.0.1:8888
+    admin-token: change-me-admin-token
