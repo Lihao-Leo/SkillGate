@@ -81,6 +81,8 @@ class ExecuteServiceTest {
     private MaterialMapper materialMapper;
     @Autowired
     private ObjectStorage objectStorage;
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     @MockBean
     private BillingClient billingClient;
@@ -378,6 +380,30 @@ class ExecuteServiceTest {
 
         assertThat(executionMapper.selectCount(new LambdaQueryWrapper<Execution>()
                 .eq(Execution::getAppKeyId, caller.appKeyId()))).isZero();
+        verify(billingClient).release(org.mockito.ArgumentMatchers.startsWith("hold_"));
+    }
+
+    // ------------------------------------------------------------------
+    // 受理落库失败（非幂等冲突）：冻结当场释放，防 hold 悬空（§4.10）
+    // ------------------------------------------------------------------
+
+    @Test
+    void insert_failure_after_freeze_releases_hold() {
+        CallerContext caller = seedAppKey(null);
+        String skillCode = "video-gen-" + uniq();
+        seedSkill(caller, skillCode, "{}", "{\"mode\":\"PER_EXECUTION\",\"points\":10}");
+        mockFreezeOk();
+
+        // H2 改表名制造「非 DuplicateKeyException」的落库失败
+        jdbcTemplate.execute("ALTER TABLE execution RENAME TO execution_backup_itf");
+        try {
+            assertThatThrownBy(() -> executeService.submit(caller, request(skillCode)))
+                    .isInstanceOf(Exception.class);
+        } finally {
+            jdbcTemplate.execute("ALTER TABLE execution_backup_itf RENAME TO execution");
+        }
+
+        // 冻结已成功，落库失败必须当场释放（不等 24h 对账）
         verify(billingClient).release(org.mockito.ArgumentMatchers.startsWith("hold_"));
     }
 

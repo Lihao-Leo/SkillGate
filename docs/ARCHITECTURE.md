@@ -64,7 +64,7 @@
 
 - `skill-execute`：执行消息（gateway → worker scheduler）
 
-- `skill-settle`：结算兜底重试（settle RPC 失败时 worker → billing，at\-least\-once，按 taskId 幂等）
+- `skill-settle`：结算兜底重试（settle RPC 失败时 worker → billing，at\-least\-once，按 taskId 幂等；消费者 dev/prod profile 显式启用、local 关闭，未启用时启动 WARN 提示）
 
 - `skill-callback-retry` / `skill-callback-dlq`：回调重试（退避 1 / 5 / 15min）与死信
 
@@ -458,7 +458,7 @@ SELECT h.hold_id, e.status FROM billing_hold h
 
 正常链路不变量见 §3\.4 伪代码；本节锁死故障路径。看门狗为 scheduler 内嵌定时任务，核心思想：**期望态（execution 终态）与实际态（MQ / K8s Job）持续对账收敛**。
 
-- **受理侧回滚**：mq\.send 同步失败（可感知）→ 当场删 execution \+ release hold \+ 返回 50001，不留悬空
+- **受理侧回滚**：mq\.send 同步失败（可感知）→ 当场删 execution \+ release hold \+ 返回 50001，不留悬空；落库非幂等异常（DB 抖动等）→ 冻结已成功，当场 release 再抛出
 
 - **PENDING 看门狗**（每 1min）：PENDING 且创建 \> 5min 未被接手 → 重投 MQ；\> 30min → 置 FAILED\(INTERNAL\) \+ 全额退款
 

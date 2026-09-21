@@ -168,6 +168,13 @@ public class ExecuteService {
             }
             return new ExecuteResult(winner.getTaskId(), winner.getSkillVersion(),
                     winner.getExpectedCount(), winner.getStatus(), true);
+        } catch (Exception e) {
+            // 非幂等冲突的落库失败（DB 抖动等）：冻结已成功，必须当场释放，
+            // 否则 hold 悬空到 24h 对账（§4.10）；并发占位由 submit 上层统一释放
+            log.error("execution insert failed after freeze, releasing hold: taskId={}, holdId={}",
+                    taskId, holdId, e);
+            releaseQuietly(holdId);
+            throw e;
         }
 
         try {
