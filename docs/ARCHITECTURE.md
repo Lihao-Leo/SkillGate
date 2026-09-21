@@ -36,7 +36,7 @@
 
 ## 3\. 系统分层架构
 
-> **服务定名（v6\.0）**：平台整体称 **Skill 执行平台（skill\-platform）**；四个后端服务为 **skill\-gateway**（Java，接入与管理）、**billing\-service**（Java，计费，独立部署）、**skill\-worker**（Python，沙箱执行编排）、**recharge\-service**（Java，充值平台：订单 / 支付渠道 / C 端用户，独立部署独立库，见 §10\.4）；两个前端应用为 **skill\-admin\-web**（管理后台：Vue 3 \+ Element Plus，PC，经 gateway 管理面 API）与 **recharge\-web**（充值用户端：Vue 3，PC Web 响应式，经 recharge\-service BFF）——前端均为静态部署（Nginx / CDN），与后端独立发布。K8s namespace：`skill-platform`；MQ Topic：`skill-execute` / `skill-settle` / `skill-callback-retry` / `skill-callback-dlq`；数据库：`skill_platform` 与 `skill_billing` 两库。
+> **服务定名（v6\.0）**：平台整体称 **Skill 执行平台（skill\-platform）**；四个后端服务为 **skill\-gateway**（Java，接入与管理）、**billing\-service**（Java，计费，独立部署）、**skill\-worker**（Python，沙箱执行编排）、**recharge\-service**（Java，充值平台：订单 / 支付渠道 / C 端用户，独立部署独立库，见 §10\.4）；两个前端应用为 **skill\-admin\-web**（管理后台：Vue 3 \+ Element Plus，PC，经 gateway 管理面 API）与 **recharge\-web**（充值用户端：Vue 3，PC Web 响应式，经 recharge\-service BFF）——前端均为静态部署（Nginx / CDN），与后端独立发布。K8s namespace：`skill-platform`；MQ Topic：`skill-execute` / `skill-settle` / `skill-callback-retry` / `skill-callback-dlq`；数据库：`skill_platform` / `skill_billing` / `recharge` 三库（充值平台独立库，§10.4）。
 > 
 > **选型 RocketMQ**：延迟消息原生支持回调退避重试（1/5/15min 定时等级）、内置 DLQ（%DLQ%消费组）、事务消息可作受理侧 Outbox 兜底（V1 用 PENDING 看门狗替代，事务消息留作演进）；消费语义 at\-least\-once，全链路靠幂等键消化重复（接手条件更新 / hold 状态 / taskId）。
 > 
@@ -114,7 +114,7 @@ while msg := mq.consume("skill-execute"):              # scheduler 常驻 Deploy
 
 ### 3\.5 存储
 
-MySQL（`skill_platform` / `skill_billing` 两库）· OSS（Skill 包 \+ 素材 \+ 产物，全私有桶，对外一律预签名）· Redis（限流 / 配额 / 并发计数 / usage / progress / 轮询状态缓存：终态查询 TTL 2s，miss 回源 DB）· **平台模型网关**（skill\-gateway 内置 OpenAI 兼容转发，替代原 LiteLLM 组件，路由即 model\_provider 表配置，§4\.5）· Milvus（RAG 向量）· Langfuse（自建，LLM 调用链观测——**v7\.0 对齐：未实施**，原经 LiteLLM callback 接入的方案随 LiteLLM 一并移除，列为演进项）。
+MySQL（`skill_platform` / `skill_billing` / `recharge` 三库）· OSS（Skill 包 \+ 素材 \+ 产物，全私有桶，对外一律预签名）· Redis（限流 / 配额 / 并发计数 / usage / progress / 轮询状态缓存：终态查询 TTL 2s，miss 回源 DB）· **平台模型网关**（skill\-gateway 内置 OpenAI 兼容转发，替代原 LiteLLM 组件，路由即 model\_provider 表配置，§4\.5）· Milvus（RAG 向量）· Langfuse（自建，LLM 调用链观测——**v7\.0 对齐：未实施**，原经 LiteLLM callback 接入的方案随 LiteLLM 一并移除，列为演进项）。
 
 ### 3\.6 多租户隔离矩阵
 
