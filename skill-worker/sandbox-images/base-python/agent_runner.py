@@ -179,6 +179,19 @@ def build_messages(config: dict, context: str, data: dict) -> list[dict]:
         user_parts.append("【补充上下文】\n" + json.dumps(data["context"], ensure_ascii=False))
     if data.get("instructions"):
         user_parts.append("【任务指令】\n" + data["instructions"])
+    # materials 是两层输入的一半（§4.2）：text 内容内联注入，文件素材列出引用键
+    material_texts: list[str] = []
+    material_files: list[str] = []
+    for index, material in enumerate(data.get("materials") or [], start=1):
+        content = (material.get("content") or "").strip()
+        if content:
+            material_texts.append(f"[素材{index}·{material.get('type', 'text')}]\n{content}")
+        elif material.get("url"):
+            material_files.append(f"[素材{index}·{material.get('type', 'file')}] {material['url']}")
+    if material_texts:
+        user_parts.append("【素材内容】\n" + "\n\n".join(material_texts))
+    if material_files:
+        user_parts.append("【素材文件引用】\n" + "\n".join(material_files))
     user_parts.append("【本次输入数据】\n" + json.dumps(
         {k: v for k, v in data.items()
          if k not in ("materials", "instructions", "context", "count", "clientRequestId")},
