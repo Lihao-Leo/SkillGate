@@ -114,7 +114,15 @@ while msg := mq.consume("skill-execute"):              # scheduler 常驻 Deploy
 
 ### 3\.5 存储
 
-MySQL（`skill_platform` / `skill_billing` / `recharge` 三库）· OSS（Skill 包 \+ 素材 \+ 产物，全私有桶，对外一律预签名）· Redis（限流 / 配额 / 并发计数 / usage / progress / 轮询状态缓存：终态查询 TTL 2s，miss 回源 DB）· **平台模型网关**（skill\-gateway 内置 OpenAI 兼容转发，替代原 LiteLLM 组件，路由即 model\_provider 表配置，§4\.5）· Milvus（RAG 向量）· Langfuse（自建，LLM 调用链观测——**v7\.0 对齐：未实施**，原经 LiteLLM callback 接入的方案随 LiteLLM 一并移除，列为演进项）。
+MySQL（`skill_platform` / `skill_billing` / `recharge` 三库）· OSS（Skill 包 \+ 素材 \+ 产物，全私有桶，对外一律预签名）· Redis（限流 / 配额 / 并发计数 / usage / progress / 轮询状态缓存：终态查询 TTL 2s，miss 回源 DB）· **平台模型网关**（skill\-gateway 内置 OpenAI 兼容转发，替代原 LiteLLM 组件，路由即 model\_provider 表配置，§4\.5）· Milvus（RAG 向量，可选部署）· Langfuse（LLM 内容级观测——**未实施**，列为演进项）。
+
+### 3\.5\.1 执行链路观测（v2\.0 已实施）
+
+**观测数据全部落 MySQL，零额外部署组件**：
+
+- `execution_event` 表（skill\_platform 库）：业务事件链，stage 词表 ACCEPT/AUTH/RATE\_LIMIT/FREEZE/ENQUEUE/CLAIM/STAGE/SANDBOX/COLLECT/ARTIFACT\_PUT/SETTLE/FINALIZE/CALLBACK/WATCHDOG/KB\_RETRIEVE；gateway 单点写库（`POST /internal/execution-events`，X\-Internal\-Token），写入失败仅告警不阻塞主链路
+- 管理后台：任务详情抽屉 = CI/CD 式动态节点流程图（当前节点脉冲/实时停留计时/沙箱进度）\+ 垂直时间线；dashboard `failureTop` 失败原因 Top5；`/wall` 监控大屏（10s 轮询流水线墙）
+- OpenTelemetry 埋点**保留但默认关闭**（traces/logs/metrics 三通道 `none`）：gateway/billing 经 opentelemetry\-spring\-boot\-starter（注意：starter 不注册 GlobalOpenTelemetry，须注入 bean），worker 经 opentelemetry\-sdk 手动 span；跨服务透传走 MQ message property 的 W3C traceparent（gateway 注入、worker/billing 提取）。需要 span 级追踪时接任意 OTLP 后端即可（不绑定 Jaeger）
 
 ### 3\.6 多租户隔离矩阵
 
@@ -1042,6 +1050,30 @@ CREATE TABLE `sys_config` (
 ```
 
 用途：全局配额默认值（quota\.qps / quota\.max\-running / quota\.daily\-limit 等）DB 覆盖 yml 默认，后管 sys\-config 接口读写（§5\.7）；限流读取顺序 = app\_key\.quota 字段 → sys\_config → yml 默认。
+
+### 6\.15 execution\_event（执行事件链，v2\.0 补录，skill\_platform 库）
+
+```sql
+CREATE TABLE `execution_event` (
+    `id`          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '自增主键',
+    `task_id`     VARCHAR(64)  NOT NULL COMMENT '关联执行任务ID',
+    `tenant_id`   VARCHAR(64)  NOT NULL COMMENT '租户标识',
+    `seq`         INT          NOT NULL COMMENT '同任务内递增序号（按 task_id+seq 排序展示）',
+    `stage`       VARCHAR(32)  NOT NULL COMMENT '阶段词表（§3.5.1）',
+    `status`      VARCHAR(16)  NOT NULL COMMENT 'OK / FAILED / SKIPPED',
+    `service`     VARCHAR(16)  NOT NULL COMMENT 'gateway / worker / billing',
+    `duration_ms` BIGINT       NULL     COMMENT '该阶段耗时',
+    `detail`      JSON         NULL     COMMENT '扩展：error_code/hold_id/points/attempt/alias/tokens/tail 等',
+    `trace_id`    VARCHAR(64)  NULL     COMMENT 'OTel traceId（预留，观测关闭时为 NULL）',
+    `occurred_at` DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '事件时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_task_seq` (`task_id`, `seq`),
+    KEY `idx_tenant_time` (`tenant_id`, `occurred_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+  COMMENT='执行事件链：观测数据，写入失败仅打日志不阻塞主链路';
+```
+
+用途：任务时间线与 CI/CD 流程图数据源（§3\.5\.1）；写入经 gateway 单点 collector（批量 ≤100、seq 按 max\+1 分配）；存量库由 schema 内幂等 ALTER 补列机制维护。
 
 ---
 
