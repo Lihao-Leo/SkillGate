@@ -7,6 +7,11 @@ kubernetes>=29.0
 # 回调 HMAC 的 AppSecret 解密（adapters/crypto.py，AES-256-GCM）
 cryptography>=42.0
 
+# 链路追踪（可选）：OTEL_EXPORTER_OTLP_ENDPOINT 未配置时自动 no-op（telemetry.py）
+opentelemetry-sdk>=1.20
+opentelemetry-api>=1.20
+opentelemetry-exporter-otlp-proto-grpc>=1.20
+
 # MQ：RocketMQ 客户端依赖本地 C++ 库（librocketmq），按部署环境启用后取消注释
 # rocketmq-client-python>=2.0.0
 

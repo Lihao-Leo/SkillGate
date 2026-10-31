@@ -64,6 +64,22 @@ class FakeBilling:
         return SettleOutcome(points_charged=actual_points, status="SETTLED")
 
 
+class FakeEvents:
+    """事件上报替身：记录全部 report 调用（供事件链断言）。"""
+
+    def __init__(self) -> None:
+        self.reports: list[dict] = []
+
+    def report(self, event: dict) -> None:
+        self.reports.append(event)
+
+    def stages_of(self, task_id: str) -> list[str]:
+        return [e["stage"] for e in self.reports if e["taskId"] == task_id]
+
+    def events_of(self, task_id: str) -> list[dict]:
+        return [e for e in self.reports if e["taskId"] == task_id]
+
+
 class Harness:
     def __init__(self, **settings_overrides):
         self.db = SqliteDatabase(sqlite3.connect(":memory:"))
@@ -73,6 +89,7 @@ class Harness:
         self.mq = InMemoryMq()
         self.sandbox = FakeSandbox()
         self.billing = FakeBilling()
+        self.events = FakeEvents()
         defaults = dict(watch_poll_seconds=0.0, default_timeout_seconds=60)
         defaults.update(settings_overrides)
         self.settings = Settings(**defaults)
@@ -83,14 +100,14 @@ class Harness:
         self.app_keys = AppKeyRepository(self.db)
         self.orchestrator = Orchestrator(
             self.executions, self.artifacts, self.skills, self.sandbox, self.oss, self.kv,
-            self.mq, self.billing, self.settings)
+            self.mq, self.billing, self.settings, events=self.events)
         self.watchdog = Watchdog(self.orchestrator, self.sandbox, self.kv, self.mq,
-                                 self.settings)
+                                 self.settings, events=self.events)
         self.callback_worker = CallbackWorker(
             _FakeHttp(), self.mq, self.executions, self.app_keys,
             self.settings.crypto_key, timeout_seconds=1.0,
             max_attempts=self.settings.callback_max_attempts,
-            delay_levels=self.settings.callback_delay_levels)
+            delay_levels=self.settings.callback_delay_levels, events=self.events)
 
     # ---------------- 种子数据 ----------------
 

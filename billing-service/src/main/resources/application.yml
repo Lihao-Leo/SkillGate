@@ -18,6 +18,19 @@ mybatis-plus:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
 
+# 链路追踪（技术方案 v2.0 §1.7）：默认 none；OTEL_TRACES_EXPORTER=otlp 启用
+otel:
+  service:
+    name: ${OTEL_SERVICE_NAME:billing-service}
+  traces:
+    exporter: ${OTEL_TRACES_EXPORTER:none}
+  exporter:
+    otlp:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://127.0.0.1:4318}
+      timeout: 5s
+  "traces.sampler": parentbased_traceidratio
+  "traces.sampler.arg": ${OTEL_TRACES_SAMPLER_ARG:1.0}
+
 skill-billing:
   internal-token: ${INTERNAL_TOKEN:change-me-internal-token}
   reconcile:

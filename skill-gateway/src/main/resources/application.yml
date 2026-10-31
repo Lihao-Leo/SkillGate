@@ -27,6 +27,25 @@ mybatis-plus:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
 
+# 链路追踪（技术方案 v2.0 §1.7）：默认全关（不引入额外部署组件）；
+# 需要时接自建 OTLP 后端：OTEL_TRACES_EXPORTER=otlp + OTEL_EXPORTER_OTLP_ENDPOINT=…
+otel:
+  service:
+    name: ${OTEL_SERVICE_NAME:skill-gateway}
+  traces:
+    exporter: ${OTEL_TRACES_EXPORTER:none}
+  logs:
+    exporter: ${OTEL_LOGS_EXPORTER:none}
+  metrics:
+    exporter: ${OTEL_METRICS_EXPORTER:none}
+  exporter:
+    otlp:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://127.0.0.1:4318}
+      timeout: 5s
+  # 采样器（prod 经 OTEL_TRACES_SAMPLER_ARG 调低采样；失败审计由 execution_event 100% 兜底）
+  "traces.sampler": parentbased_traceidratio
+  "traces.sampler.arg": ${OTEL_TRACES_SAMPLER_ARG:1.0}
+
 skill-platform:
   # AppSecret / 供应商 Key 加密密钥（base64 32B；生产经 Secret 注入，此处为本地开发值）
   crypto-key: ${CRYPTO_KEY:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
@@ -54,6 +73,8 @@ skill-platform:
   storage:
     # 对象存储（S3 兼容）：provider 决定生效哪个供应商的配置块（oss / cos），配哪个生效哪个
     provider: ${STORAGE_PROVIDER:cos}
+    # path-style 寻址：MinIO 等自建 S3 置 true（云厂商 OSS/COS 保持 false 虚拟主机风格）
+    path-style: ${STORAGE_PATH_STYLE:false}
     # 所有对象统一落在桶内该目录下（worker 侧 OSS_KEY_PREFIX 必须与此一致）
     key-prefix: ${STORAGE_KEY_PREFIX:skill-platform/}
     oss:

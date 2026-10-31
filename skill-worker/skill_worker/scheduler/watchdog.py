@@ -23,13 +23,35 @@ MISSING_STREAK_KEY = "watchdog:missing:{task_id}"
 
 class Watchdog:
     def __init__(self, orchestrator: Orchestrator, sandbox: SandboxPort, kv: KvPort,
-                 mq: MqPort, settings: Settings):
+                 mq: MqPort, settings: Settings, events=None):
         self._orchestrator = orchestrator
         self._sandbox = sandbox
         self._kv = kv
         self._mq = mq
         self._settings = settings
+        self._events = events
         self._executions = orchestrator._executions  # noqa: SLF001 - 同模块协作
+
+    def _watchdog_event(self, execution, action: str, detail: dict) -> None:
+        """上报 WATCHDOG 干预事件（重投/收殓/置败）；观测失败不影响看门狗主流程。"""
+        if self._events is None:
+            return
+        try:
+            from ..telemetry import current_trace_id
+
+            self._events.report({
+                "taskId": execution.task_id,
+                "tenantId": execution.tenant_id,
+                "stage": "WATCHDOG",
+                "status": "OK",
+                "service": "worker",
+                "durationMs": None,
+                "detail": dict(detail, action=action),
+                "traceId": current_trace_id(),
+                "occurredAt": datetime.now().isoformat(timespec="milliseconds"),
+            })
+        except Exception:  # noqa: BLE001
+            pass
 
     def reconcile(self) -> None:
         self._requeue_stale_pending()
@@ -45,6 +67,7 @@ class Watchdog:
         cutoff = datetime.now() - timedelta(seconds=self._settings.pending_requeue_seconds)
         for execution in self._executions.pending_before(cutoff):
             self._mq.send("skill-execute", {"taskId": execution.task_id})  # 条件更新防双跑
+            self._watchdog_event(execution, "REQUEUE", {"cutoff": cutoff.isoformat()})
 
     def _fail_stuck_pending(self) -> None:
         cutoff = datetime.now() - timedelta(seconds=self._settings.pending_fail_seconds)
@@ -53,6 +76,8 @@ class Watchdog:
             self._orchestrator.settle_flow.settle(execution, 0)
             self._executions.finalize_pending_failed(execution.task_id)
             self._kv.delete(MISSING_STREAK_KEY.format(task_id=execution.task_id))
+            self._watchdog_event(execution, "FAIL_STUCK",
+                                 {"error_code": "INTERNAL", "reason": "pending stuck"})
 
     # ------------------------------------------------------------------
     # RUNNING 段

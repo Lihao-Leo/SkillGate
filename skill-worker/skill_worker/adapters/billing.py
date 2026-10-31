@@ -28,11 +28,16 @@ class HttpBillingClient:
 
     def settle(self, task_id: str, actual_points: int):
         from ..domain import SettleOutcome
+        from ..telemetry import current_traceparent
 
         body = json.dumps({"taskId": task_id, "actualPoints": actual_points}).encode()
         request = urllib.request.Request(
             f"{self._base_url}/internal/billing/settle", data=body, method="POST",
             headers={"Content-Type": "application/json", "X-Internal-Token": self._token})
+        traceparent = current_traceparent()
+        if traceparent:
+            # 结算 RPC 接入同一 trace：billing server span 挂到任务瀑布图（技术方案 v2.0 §1.5）
+            request.add_header("traceparent", traceparent)
         try:
             with urllib.request.urlopen(request, timeout=self._timeout) as response:
                 envelope = json.loads(response.read().decode())

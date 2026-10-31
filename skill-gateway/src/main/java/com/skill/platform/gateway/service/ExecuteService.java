@@ -65,6 +65,8 @@ public class ExecuteService {
     private final ObjectStorage objectStorage;
     private final RateLimitService rateLimitService;
     private final CallbackUrlValidator callbackUrlValidator;
+    private final ExecutionEventCollectorService eventCollector;
+    private final com.skill.platform.gateway.infra.Tracing tracing;
 
     @Value("${skill-platform.recharge-url:https://recharge.example.com}")
     private String rechargeUrl;
@@ -75,15 +77,44 @@ public class ExecuteService {
     }
 
     public ExecuteResult submit(CallerContext caller, ExecuteRequest request) {
-        // ---- ② 限流/配额（QPS / 日调用量；并发占位在动账前获取）----
+        // taskId 提前生成：ACCEPT/AUTH/RATE_LIMIT 事件也挂到同一 taskId 时间线上
+        String taskId = Ids.next("task_");
+        io.opentelemetry.api.trace.Span acceptSpan = tracing.span("ACCEPT", taskId);
+        long acceptStart = System.nanoTime();
+        recordEvent(taskId, caller.tenantId(), "ACCEPT", "OK", 0, Map.of());
+        try {
+            return doSubmit(taskId, caller, request, acceptStart);
+        } finally {
+            acceptSpan.end();
+        }
+    }
+
+    /** 受理主流程（五关：②限流 → 校验 → 幂等 → ③冻结 → ④落库 → ④入队 → ⑤返回） */
+    private ExecuteResult doSubmit(String taskId, CallerContext caller, ExecuteRequest request,
+                                   long acceptStart) {
+        // ---- ① AUTH：AppKey 有效性 ----
         AppKey appKey = appKeyMapper.selectOne(new LambdaQueryWrapper<AppKey>()
                 .eq(AppKey::getAppKeyId, caller.appKeyId()));
         if (appKey == null) {
+            recordEvent(taskId, caller.tenantId(), "AUTH", "FAILED", acceptStart,
+                    Map.of("error_code", "40101"));
             throw new BizException(ErrorCode.UNAUTHORIZED, "AppKey 无效");
         }
+        recordEvent(taskId, caller.tenantId(), "AUTH", "OK", acceptStart, Map.of());
+
+        // ---- ② 限流/配额（QPS / 日调用量；并发占位在动账前获取）----
+        long rateStart = System.nanoTime();
         RateLimitService.Quota quota = rateLimitService.quotaOf(appKey);
-        rateLimitService.checkQps(caller.appKeyId(), quota);
-        rateLimitService.checkDailyQuota(caller.appKeyId(), quota);
+        try {
+            rateLimitService.checkQps(caller.appKeyId(), quota);
+            rateLimitService.checkDailyQuota(caller.appKeyId(), quota);
+        } catch (RuntimeException e) {
+            recordEvent(taskId, caller.tenantId(), "RATE_LIMIT", "FAILED", rateStart,
+                    Map.of("error_code", String.valueOf(e instanceof BizException be
+                            ? be.errorCode().code() : 50001)));
+            throw e;
+        }
+        recordEvent(taskId, caller.tenantId(), "RATE_LIMIT", "OK", rateStart, Map.of());
 
         // ---- 校验：Skill / 版本 / 定价 / 数量 / 素材 / 回调 ----
         ResolvedSkill resolved = resolveSkill(caller, request);
@@ -115,18 +146,24 @@ public class ExecuteService {
             }
         }
 
-        rateLimitService.tryAcquireRunning(caller.tenantId(), quota);
         try {
-            return accept(caller, request, resolved, count, contextJson);
+            rateLimitService.tryAcquireRunning(caller.tenantId(), quota);
+        } catch (RuntimeException e) {
+            recordEvent(taskId, caller.tenantId(), "RATE_LIMIT", "FAILED", rateStart,
+                    Map.of("error_code", "42901"));
+            throw e;
+        }
+        try {
+            return accept(taskId, caller, request, resolved, count, contextJson);
         } catch (Exception e) {
             rateLimitService.releaseRunning(caller.tenantId());
             throw e;
         }
     }
 
-    private ExecuteResult accept(CallerContext caller, ExecuteRequest request, ResolvedSkill resolved,
-                                 CountResolver.Resolution count, String contextJson) {
-        String taskId = Ids.next("task_");
+    private ExecuteResult accept(String taskId, CallerContext caller, ExecuteRequest request,
+                                 ResolvedSkill resolved, CountResolver.Resolution count,
+                                 String contextJson) {
         long amount = freezeAmount(resolved.pricing(), count.count());
 
         // 完整入参 JSON 落 OSS（worker 经 input_ref 读取并注入沙箱 input.json，§4.7）
@@ -135,6 +172,7 @@ public class ExecuteService {
                 .getBytes(StandardCharsets.UTF_8), "application/json");
 
         // ③ 冻结（余额不足快速失败 40201，任务不创建；响应带 rechargeUrl）
+        long freezeStart = System.nanoTime();
         String holdId = null;
         if (amount > 0) {
             try {
@@ -143,13 +181,21 @@ public class ExecuteService {
                     throw new BizException(ErrorCode.INTERNAL_ERROR, "冻结响应异常");
                 }
                 holdId = freeze.holdId();
+                recordEvent(taskId, caller.tenantId(), "FREEZE", "OK", freezeStart,
+                        Map.of("hold_id", holdId, "points", amount));
             } catch (BizException e) {
                 if (e.errorCode() == ErrorCode.INSUFFICIENT_BALANCE) {
+                    recordEvent(taskId, caller.tenantId(), "FREEZE", "FAILED", freezeStart,
+                            Map.of("error_code", "40201"));
                     throw new BizException(ErrorCode.INSUFFICIENT_BALANCE, e.getMessage(),
                             Map.of("rechargeUrl", rechargeUrl));
                 }
+                recordEvent(taskId, caller.tenantId(), "FREEZE", "FAILED", freezeStart,
+                        Map.of("error_code", String.valueOf(e.errorCode().code())));
                 throw e;
             }
+        } else {
+            recordEvent(taskId, caller.tenantId(), "FREEZE", "SKIPPED", 0, Map.of("points", 0));
         }
 
         // ④ 落库（uk_key_client_req 并发幂等冲突 → 败者立即释放 hold，返回胜者 taskId）
@@ -178,10 +224,14 @@ public class ExecuteService {
         }
 
         try {
+            long enqueueStart = System.nanoTime();
             messageProducer.sendExecute(taskId);
+            recordEvent(taskId, caller.tenantId(), "ENQUEUE", "OK", enqueueStart, Map.of());
         } catch (Exception e) {
             // 可感知失败：当场回滚（删 execution + 释放 hold）不留悬空（TC-EXE-009）
             log.error("mq send failed, rolling back accept: taskId={}", taskId, e);
+            recordEvent(taskId, caller.tenantId(), "ENQUEUE", "FAILED", 0,
+                    Map.of("error_code", "50001"));
             executionMapper.delete(new LambdaQueryWrapper<Execution>()
                     .eq(Execution::getTaskId, taskId)
                     .eq(Execution::getStatus, Execution.STATUS_PENDING));
@@ -195,8 +245,7 @@ public class ExecuteService {
 
     private Execution buildExecution(CallerContext caller, ExecuteRequest request, ResolvedSkill resolved,
                                      CountResolver.Resolution count, String taskId, String holdId,
-                                     String inputRef, String contextJson) {
-        Execution execution = new Execution();
+                                     String inputRef, String contextJson) {        Execution execution = new Execution();
         execution.setTaskId(taskId);
         execution.setClientRequestId(request.clientRequestId());
         execution.setAppKeyId(caller.appKeyId());
@@ -412,6 +461,20 @@ public class ExecuteService {
         } catch (Exception e) {
             log.warn("parse callback domains failed: {}", appKey.getAppKeyId());
             return List.of();
+        }
+    }
+
+    /** 受理五关事件落 execution_event：观测写入双层兜底（collector 自身降级 + 此处再兜），不影响受理 */
+    private void recordEvent(String taskId, String tenantId, String stage, String status,
+                             long startNanos, Map<String, Object> detail) {
+        long durationMs = startNanos <= 0 ? 0 : (System.nanoTime() - startNanos) / 1_000_000;
+        try {
+            eventCollector.collectBatch(List.of(new ExecutionEventCollectorService.EventInput(
+                    taskId, tenantId, stage, status, "gateway", durationMs,
+                    detail == null || detail.isEmpty() ? null : detail,
+                    tracing.currentTraceId(), LocalDateTime.now())));
+        } catch (Exception eventFailure) {
+            log.warn("accept event record failed: taskId={}, stage={}", taskId, stage, eventFailure);
         }
     }
 

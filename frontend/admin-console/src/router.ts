@@ -7,6 +7,7 @@ const routes = [
   { path: '/skills', name: 'skills', component: () => import('./views/SkillsView.vue') },
   { path: '/app-keys', name: 'app-keys', component: () => import('./views/AppKeysView.vue') },
   { path: '/executions', name: 'executions', component: () => import('./views/ExecutionsView.vue') },
+  { path: '/wall', name: 'wall', component: () => import('./views/WallView.vue') },
   { path: '/account', name: 'account', component: () => import('./views/AccountView.vue') },
   { path: '/models', name: 'models', component: () => import('./views/ModelProvidersView.vue') },
   { path: '/kb', name: 'kb', component: () => import('./views/KbView.vue') },

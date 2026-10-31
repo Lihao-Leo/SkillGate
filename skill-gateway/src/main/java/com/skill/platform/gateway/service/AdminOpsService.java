@@ -1,13 +1,17 @@
 package com.skill.platform.gateway.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.skill.platform.gateway.dal.entity.Execution;
+import com.skill.platform.gateway.dal.entity.ExecutionEvent;
+import com.skill.platform.gateway.dal.mapper.ExecutionEventMapper;
 import com.skill.platform.gateway.dal.mapper.ExecutionMapper;
 import com.skill.platform.gateway.infra.CallbackRetryProducer;
 import com.skill.platform.gateway.security.CallerContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,17 +27,64 @@ public class AdminOpsService {
     private final ExecutionMapper executionMapper;
     private final ExecutionQueryService executionQueryService;
     private final CallbackRetryProducer callbackRetryProducer;
+    private final ExecutionEventMapper executionEventMapper;
+    private final ObjectMapper objectMapper;
 
-    /** 最近任务列表（全平台，轻量行）——後管执行监控任务列表 */
+    /**
+     * 任务执行事件链（技术方案 v2.0 §1.6）：按 seq 升序返回，detail 已解析为 JSON 对象。
+     */
+    public List<Map<String, Object>> executionEvents(String taskId) {
+        List<ExecutionEvent> events = executionEventMapper.selectList(
+                new LambdaQueryWrapper<ExecutionEvent>()
+                        .eq(ExecutionEvent::getTaskId, taskId)
+                        .orderByAsc(ExecutionEvent::getSeq));
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (ExecutionEvent e : events) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("taskId", e.getTaskId());
+            row.put("seq", e.getSeq());
+            row.put("stage", e.getStage());
+            row.put("status", e.getStatus());
+            row.put("service", e.getService());
+            row.put("durationMs", e.getDurationMs());
+            row.put("traceId", e.getTraceId());
+            row.put("occurredAt", e.getOccurredAt() == null ? null : e.getOccurredAt().toString());
+            row.put("detail", parseDetail(e.getDetail()));
+            rows.add(row);
+        }
+        return rows;
+    }
+
+    /** detail 字符串解析为对象；非 JSON 原样返回字符串 */
+    private Object parseDetail(String detail) {
+        if (detail == null || detail.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readTree(detail);
+        } catch (Exception parseFailure) {
+            return detail;
+        }
+    }
+
+    /** 最近任务列表（全平台，轻量行）——後管执行监控任务列表；status/skillCode/tenantId/onlyFailed 筛选 */
     public com.baomidou.mybatisplus.extension.plugins.pagination.Page<Map<String, Object>> listExecutions(
-            int hours, String status, int pageNo, int pageSize) {
+            int hours, String status, String skillCode, String tenantId, boolean onlyFailed,
+            int pageNo, int pageSize) {
         var since = java.time.LocalDateTime.now().minusHours(Math.max(hours, 1));
+        // 条件布尔不短路实参求值：先归一化，避免 null.strip() NPE
+        String skill = skillCode == null ? "" : skillCode.strip();
+        String tenant = tenantId == null ? "" : tenantId.strip();
         var page = executionMapper.selectPage(
                 new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(
                         Math.max(pageNo, 1), Math.min(Math.max(pageSize, 1), 100)),
                 new LambdaQueryWrapper<Execution>()
                         .ge(Execution::getCreatedAt, since)
-                        .eq(status != null && !status.isBlank(), Execution::getStatus, status)
+                        .eq(onlyFailed, Execution::getStatus, "FAILED")
+                        .eq(!onlyFailed && status != null && !status.isBlank(),
+                                Execution::getStatus, status)
+                        .like(!skill.isEmpty(), Execution::getSkillCode, skill)
+                        .eq(!tenant.isEmpty(), Execution::getTenantId, tenant)
                         .orderByDesc(Execution::getId));
         var rows = page.getRecords().stream().map(e -> {
             Map<String, Object> row = new LinkedHashMap<>();

@@ -109,6 +109,14 @@ class Settings:
     settle_timeout_seconds: float = 5.0
     settle_rpc_retries: int = 1
 
+    # OpenTelemetry（可选链路追踪：endpoint 未配置或 OTEL_SDK_DISABLED 置真时 no-op）
+    otel_endpoint: str = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+    otel_service_name: str = os.environ.get("OTEL_SERVICE_NAME", "skill-worker")
+    otel_sdk_disabled: str = os.environ.get("OTEL_SDK_DISABLED", "")
+
+    # gateway internal（执行事件上报通道，技术方案 v2.0 §1.4）
+    gateway_base_url: str = os.environ.get("GATEWAY_BASE_URL", "http://127.0.0.1:8888")
+
     # 回调（§5.5）
     callback_timeout_seconds: float = 10.0
     callback_max_attempts: int = 3

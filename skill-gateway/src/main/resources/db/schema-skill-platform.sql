@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS `skill` (
     `output_config`      JSON                                 COMMENT '产出能力声明（运营性配置）',
     `pricing_config`     JSON                                 COMMENT '定价（运营性配置）',
     `invocation_spec`    JSON                                 COMMENT '调用说明元数据，一键导出 markdown/openapi/tool-schema',
+    `kb_bindings`        JSON                                 COMMENT '默认授权知识库集 [{kbId,topK}]（V2.0 声明绑定；沙箱授权集=声明∪context.kbIds）',
     `telemetry_token`    VARCHAR(64)  NULL                    COMMENT '埋点令牌（skt- 前缀）；NULL=非公开分发',
     `default_version`    VARCHAR(32)  NULL                    COMMENT '当前默认执行版本号',
     `status`             TINYINT      NOT NULL DEFAULT 1      COMMENT '状态：1=启用 0=禁用',
@@ -78,6 +79,24 @@ CREATE TABLE IF NOT EXISTS `execution` (
     KEY `idx_status_started` (`status`, `started_at`),
     KEY `idx_created` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='执行记录表：统一异步；idx_status_started 供看门狗扫描';
+
+CREATE TABLE IF NOT EXISTS `execution_event` (
+    `id`          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '自增主键',
+    `task_id`     VARCHAR(64)  NOT NULL COMMENT '关联执行任务ID',
+    `tenant_id`   VARCHAR(64)  NOT NULL COMMENT '租户标识',
+    `seq`         INT          NOT NULL COMMENT '同任务内递增序号（按 task_id+seq 排序展示）',
+    `stage`       VARCHAR(32)  NOT NULL COMMENT '阶段：ACCEPT/AUTH/RATE_LIMIT/FREEZE/ENQUEUE/CLAIM/STAGE/SANDBOX/COLLECT/ARTIFACT_PUT/SETTLE/FINALIZE/CALLBACK/WATCHDOG/KB_RETRIEVE',
+    `status`      VARCHAR(16)  NOT NULL COMMENT 'OK / FAILED / SKIPPED',
+    `service`     VARCHAR(16)  NOT NULL COMMENT 'gateway / worker / billing',
+    `duration_ms` BIGINT       NULL     COMMENT '该阶段耗时',
+    `detail`      JSON         NULL     COMMENT '扩展：error_code/hold_id/points/attempt/alias/tokens/tail 等',
+    `trace_id`    VARCHAR(64)  NULL     COMMENT 'OTel traceId（预留关联 Jaeger）',
+    `occurred_at` DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '事件时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_task_seq` (`task_id`, `seq`),
+    KEY `idx_tenant_time` (`tenant_id`, `occurred_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+  COMMENT='执行事件链：观测数据，写入失败仅打日志不阻塞主链路';
 
 CREATE TABLE IF NOT EXISTS `artifact` (
     `id`            BIGINT       NOT NULL AUTO_INCREMENT COMMENT '自增主键',
@@ -174,12 +193,29 @@ CREATE TABLE IF NOT EXISTS `kb_document` (
     `tenant_id`   VARCHAR(64)  NOT NULL COMMENT '租户标识',
     `oss_key`     VARCHAR(512) NOT NULL COMMENT '原文 OSS 路径',
     `chunk_count` INT          NOT NULL DEFAULT 0 COMMENT '已入库分块数',
-    `status`      TINYINT      NOT NULL DEFAULT 0 COMMENT '0=待入库 1=已入库 2=失败',
+    `status`      TINYINT      NOT NULL DEFAULT 0 COMMENT '0=待入库 3=处理中 1=已入库 2=失败',
+    `error_message` VARCHAR(512) NULL COMMENT '入库失败原因（status=2 时可见）',
     `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间',
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_doc` (`doc_id`),
     KEY `idx_kb` (`kb_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='知识库文档表';
+
+CREATE TABLE IF NOT EXISTS `kb_chunk` (
+    `id`          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '自增主键',
+    `chunk_id`    VARCHAR(80)  NOT NULL COMMENT '分块ID：{docId}::{idx}',
+    `doc_id`      VARCHAR(64)  NOT NULL COMMENT '所属文档',
+    `kb_id`       VARCHAR(64)  NOT NULL COMMENT '所属知识库',
+    `tenant_id`   VARCHAR(64)  NOT NULL COMMENT '租户标识',
+    `chunk_idx`   INT          NOT NULL COMMENT '文档内序号',
+    `text`        TEXT         NOT NULL COMMENT '分块原文（预览/引用溯源）',
+    `text_hash`   CHAR(64)     NOT NULL COMMENT '内容 SHA-256（变更检测）',
+    `embed_model` VARCHAR(128) NOT NULL COMMENT '实际灌入的 embedding 模型（重灌判断依据）',
+    `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_chunk` (`chunk_id`),
+    KEY `idx_doc` (`doc_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='KB 分块表：入库幂等与溯源';
 
 CREATE TABLE IF NOT EXISTS `skill_io_log` (
     `id`          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '自增主键',
@@ -204,3 +240,25 @@ CREATE TABLE IF NOT EXISTS `sys_config` (
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_config_key` (`config_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='平台系统配置：DB 覆盖 yml 默认值';
+
+-- ============================================================
+-- V2.0_1 增量（存量库幂等加列；新库由上方 CREATE TABLE 直接建全）
+-- MySQL 8 无 ADD COLUMN IF NOT EXISTS，借助 information_schema 判存后 PREPARE 执行
+-- ============================================================
+SET @ddl_kb_doc = (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE kb_document ADD COLUMN error_message VARCHAR(512) NULL AFTER status',
+    'SELECT 1')
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'kb_document' AND COLUMN_NAME = 'error_message');
+PREPARE stmt1 FROM @ddl_kb_doc;
+EXECUTE stmt1;
+DEALLOCATE PREPARE stmt1;
+
+SET @ddl_skill = (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE skill ADD COLUMN kb_bindings JSON NULL AFTER invocation_spec',
+    'SELECT 1')
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'skill' AND COLUMN_NAME = 'kb_bindings');
+PREPARE stmt2 FROM @ddl_skill;
+EXECUTE stmt2;
+DEALLOCATE PREPARE stmt2;

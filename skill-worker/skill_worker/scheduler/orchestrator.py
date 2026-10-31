@@ -21,6 +21,7 @@ from ..adapters.kv import KvPort
 from ..adapters.mq import MqPort
 from ..config import Settings
 from ..domain import (CANCELLING, PENDING, RUNNING, ArtifactFile, Execution, RunResult, Usage)
+from ..telemetry import current_trace_id, current_traceparent
 from . import artifacts as artifact_rules
 from . import usage as usage_rules
 from .callback import callback_body
@@ -75,7 +76,7 @@ class Orchestrator:
     def __init__(self, executions: ExecutionRepository, artifacts: ArtifactRepository,
                  skills: SkillRepository, sandbox: SandboxPort, oss: OssPort, kv: KvPort,
                  mq: MqPort, billing: BillingPort, settings: Settings,
-                 now_fn=time.time):
+                 now_fn=time.time, events=None):
         self._executions = executions
         self._artifacts = artifacts
         self._skills = skills
@@ -85,13 +86,39 @@ class Orchestrator:
         self._mq = mq
         self._settings = settings
         self._now = now_fn
+        self._events = events
         self.settle_flow = SettleFlow(billing, mq, settings)
+
+    # ------------------------------------------------------------------
+    # 事件链（技术方案 v2.0 §1.3：stage 词表与 gateway/事件表一致）
+    # ------------------------------------------------------------------
+
+    def _event(self, execution: Execution, stage: str, status: str, duration_ms: float,
+               detail: dict | None = None) -> None:
+        """上报一条 worker 阶段事件；reporter 缺省（单测/未接线）或上报失败静默忽略。"""
+        if self._events is None:
+            return
+        try:
+            self._events.report({
+                "taskId": execution.task_id,
+                "tenantId": execution.tenant_id,
+                "stage": stage,
+                "status": status,
+                "service": "worker",
+                "durationMs": int(duration_ms) if duration_ms is not None else None,
+                "detail": detail or None,
+                "traceId": current_trace_id(),
+                "occurredAt": datetime.now().isoformat(timespec="milliseconds"),
+            })
+        except Exception:  # noqa: BLE001 - 观测不阻塞执行主链路
+            logger.warning("event report failed: task=%s stage=%s", execution.task_id, stage)
 
     # ------------------------------------------------------------------
     # 消费入口（skill-execute）
     # ------------------------------------------------------------------
 
     def handle(self, task_id: str) -> None:
+        handle_start = time.time()
         execution = self._executions.get(task_id)
         if execution is None:
             return  # 受理侧已回滚，忽略残留消息
@@ -102,6 +129,7 @@ class Orchestrator:
             return  # 另一副本已接手（条件更新防双消费）
         execution.status = RUNNING
         execution.started_at = claimed_at
+        self._event(execution, "CLAIM", "OK", (time.time() - handle_start) * 1000)
         self._run(execution)
 
     # ------------------------------------------------------------------
@@ -110,19 +138,33 @@ class Orchestrator:
 
     def _run(self, execution: Execution) -> None:
         started = time.time()
+        stage_start = time.time()
         staging_error = self._stage_workspace(execution)
         if staging_error:
+            self._event(execution, "STAGE", "FAILED", (time.time() - stage_start) * 1000,
+                        {"error_code": "INTERNAL", "error_message": staging_error[:400]})
             self._finish(execution, RunResult.failed("INTERNAL", staging_error), [], Usage())
             return
+        self._event(execution, "STAGE", "OK", (time.time() - stage_start) * 1000)
 
         spec = self._build_spec(execution)
+        sandbox_start = time.time()
         job = self._sandbox.create_job(spec)
         result, cancelled = self._watch(job, execution, spec.timeout_seconds)
+        sandbox_ms = (time.time() - sandbox_start) * 1000
         if cancelled:
             # 用户取消 → 杀 Job 走失败路径（§3.4）
             self._sandbox.delete_job(job)
             result = RunResult.cancelled()
+        if result.ok:
+            self._event(execution, "SANDBOX", "OK", sandbox_ms,
+                        {"job_name": job, "progress": 100})
+        else:
+            self._event(execution, "SANDBOX", "FAILED", sandbox_ms,
+                        {"job_name": job, "error_code": result.error_code,
+                         "error_message": (result.error_message or "")[:400]})
 
+        collect_start = time.time()
         files = self._sandbox.collect_artifacts(execution.task_id) if result.ok else []
         if result.ok and not files:
             result = RunResult.failed("EMPTY_OUTPUT",
@@ -136,6 +178,10 @@ class Orchestrator:
             if over:
                 result = RunResult.failed("OUTPUT_LIMIT", over)
                 files = []  # 超限不落 OSS（滥用防护）
+        self._event(execution, "COLLECT", "OK" if result.ok else "FAILED",
+                    (time.time() - collect_start) * 1000,
+                    {"file_count": len(files),
+                     "error_code": None if result.ok else result.error_code})
         self._finish(execution, result, files, self._flush_usage(execution.task_id))
 
     def _finish(self, execution: Execution, result: RunResult, files: list[ArtifactFile],
@@ -144,11 +190,14 @@ class Orchestrator:
         artifact_views: list[dict] = []
         if result.ok and files:
             # 1) 先落产物（{tenantId}/artifacts/{taskId}/）
+            artifact_start = time.time()
             for file in files:
                 key = f"{execution.tenant_id}/artifacts/{execution.task_id}/{file.filename}"
                 self._oss.put(key, file.content)
             if not self._artifacts.exists(execution.task_id):
                 self._artifacts.insert(execution.task_id, execution.tenant_id, files)
+            self._event(execution, "ARTIFACT_PUT", "OK", (time.time() - artifact_start) * 1000,
+                        {"file_count": len(files)})
             artifact_views = [
                 {"type": file.type,
                  "url": self._oss.presign_get(
@@ -158,8 +207,12 @@ class Orchestrator:
             ]
 
         # 2) 同步结算（失败立即重试 1 次；双次失败走 MQ 兜底，charged 为预估）
+        settle_start = time.time()
         actual = self.settle_flow.actual_points(execution, result, len(files), usage)
         charged, settled = self.settle_flow.settle(execution, actual)
+        self._event(execution, "SETTLE", "OK", (time.time() - settle_start) * 1000,
+                    {"points": charged, "fallback": not settled,
+                     "hold_id": execution.hold_id})
 
         # 3) 最后置终态【无完成无结果竞态】
         duration_ms = int((time.time() - self._started_clock(execution)) * 1000)
@@ -169,6 +222,9 @@ class Orchestrator:
             execution.task_id, final_status, result.error_code, result.error_message,
             duration_ms, usage.model_calls, usage.tokens, datetime.now(),
             callback_status=None if execution.callback_url else "NO_CALLBACK")
+        self._event(execution, "FINALIZE", "OK", duration_ms,
+                    {"final_status": final_status,
+                     "error_code": result.error_code})
 
         if execution.callback_url:
             body = callback_body(execution, result, artifact_views, charged, settled, usage,
@@ -221,6 +277,10 @@ class Orchestrator:
                             ",".join(abilities) if abilities else "llm-text")
         if needs_video:
             spec.cpu, spec.memory = "4", "8Gi"  # 视频类 4C8G 档位（§4.6）
+        # trace 上下文注入沙箱（技术方案 v2.0 §1.5）：toolset 出站调用接续同一 trace
+        traceparent = current_traceparent()
+        if traceparent:
+            spec.env["TRACEPARENT"] = traceparent
         return spec
 
     def _watch(self, job: str, execution: Execution,

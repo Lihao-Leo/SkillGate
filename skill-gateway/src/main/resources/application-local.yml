@@ -9,3 +9,8 @@ spring:
     init:
       mode: always
       schema-locations: classpath:db/schema-local.sql
+
+# local：零外部依赖自洽——显式关闭链路导出（无 Jaeger/OTLP 端点）
+otel:
+  traces:
+    exporter: none

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.skill.platform.gateway.dal.mapper.KbChunkMapper">
+
+    <!-- 批量插入分块：SQL 外置（DM-CHECK 约定），多值 INSERT 单语句完成 -->
+    <insert id="insertBatch">
+        INSERT INTO kb_chunk (chunk_id, doc_id, kb_id, tenant_id, chunk_idx, text, text_hash, embed_model)
+        VALUES
+        <foreach collection="chunks" item="c" separator=",">
+            (#{c.chunkId}, #{c.docId}, #{c.kbId}, #{c.tenantId}, #{c.chunkIdx}, #{c.text}, #{c.textHash}, #{c.embedModel})
+        </foreach>
+    </insert>
+</mapper>

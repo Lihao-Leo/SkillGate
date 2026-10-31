@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS skill (
     output_config      TEXT,
     pricing_config     TEXT,
     invocation_spec    TEXT,
+    kb_bindings        TEXT,
     telemetry_token    VARCHAR(64),
     default_version    VARCHAR(32),
     status             TINYINT NOT NULL DEFAULT 1,
@@ -89,6 +90,24 @@ CREATE TABLE IF NOT EXISTS execution (
 
 CREATE INDEX IF NOT EXISTS idx_exec_tenant_status ON execution (tenant_id, status);
 CREATE INDEX IF NOT EXISTS idx_exec_status ON execution (status);
+
+-- 执行事件链：观测数据，写入失败不阻塞主链路（detail JSON 以 TEXT 承载）
+CREATE TABLE IF NOT EXISTS execution_event (
+    id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+    task_id     VARCHAR(64) NOT NULL,
+    tenant_id   VARCHAR(64) NOT NULL,
+    seq         INT NOT NULL,
+    stage       VARCHAR(32) NOT NULL,
+    status      VARCHAR(16) NOT NULL,
+    service     VARCHAR(16) NOT NULL,
+    duration_ms BIGINT,
+    detail      TEXT,
+    trace_id    VARCHAR(64),
+    occurred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_task_seq ON execution_event (task_id, seq);
+CREATE INDEX IF NOT EXISTS idx_event_tenant_time ON execution_event (tenant_id, occurred_at);
 
 CREATE TABLE IF NOT EXISTS artifact (
     id           BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -157,16 +176,34 @@ CREATE TABLE IF NOT EXISTS kb (
 );
 
 CREATE TABLE IF NOT EXISTS kb_document (
+    id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+    doc_id        VARCHAR(64) NOT NULL,
+    kb_id         VARCHAR(64) NOT NULL,
+    tenant_id     VARCHAR(64) NOT NULL,
+    oss_key       VARCHAR(512) NOT NULL,
+    chunk_count   INT NOT NULL DEFAULT 0,
+    status        TINYINT NOT NULL DEFAULT 0,
+    error_message VARCHAR(512),
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_doc UNIQUE (doc_id)
+);
+
+-- KB 分块表：入库幂等与溯源（text 以 TEXT 承载）
+CREATE TABLE IF NOT EXISTS kb_chunk (
     id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+    chunk_id    VARCHAR(80) NOT NULL,
     doc_id      VARCHAR(64) NOT NULL,
     kb_id       VARCHAR(64) NOT NULL,
     tenant_id   VARCHAR(64) NOT NULL,
-    oss_key     VARCHAR(512) NOT NULL,
-    chunk_count INT NOT NULL DEFAULT 0,
-    status      TINYINT NOT NULL DEFAULT 0,
+    chunk_idx   INT NOT NULL,
+    text        TEXT NOT NULL,
+    text_hash   CHAR(64) NOT NULL,
+    embed_model VARCHAR(128) NOT NULL,
     created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uk_doc UNIQUE (doc_id)
+    CONSTRAINT uk_chunk UNIQUE (chunk_id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_chunk_doc ON kb_chunk (doc_id);
 
 CREATE TABLE IF NOT EXISTS skill_io_log (
     id          BIGINT AUTO_INCREMENT PRIMARY KEY,

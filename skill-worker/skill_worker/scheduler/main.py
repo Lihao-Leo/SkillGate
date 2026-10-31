@@ -11,6 +11,7 @@ import time
 
 from ..adapters.billing import HttpBillingClient
 from ..adapters.db import PyMySqlDatabase
+from ..adapters.events import EventReporter
 from ..adapters.k8s import K8sSandbox, LocalSubprocessSandbox
 from ..adapters.kv import RedisKv
 from ..adapters.mq import RocketMqAdapter
@@ -18,6 +19,7 @@ from ..adapters.oss import S3Oss
 from ..adapters.repositories import (AppKeyRepository, ArtifactRepository, ExecutionRepository,
                                      SkillRepository)
 from ..config import Settings, load_settings
+from ..telemetry import init_tracing
 from .callback import CallbackWorker, UrllibHttpPort
 from .orchestrator import Orchestrator
 from .watchdog import Watchdog
@@ -45,16 +47,19 @@ def build(settings: Settings) -> tuple[Orchestrator, Watchdog, CallbackWorker]:
     billing = HttpBillingClient(settings.billing_base_url, settings.billing_internal_token,
                                  settings.settle_timeout_seconds)
     mq = RocketMqAdapter(settings.mq_proxy_endpoint)
+    # 执行事件上报（技术方案 v2.0 §1.4）：缓冲批量 POST gateway internal 端点，观测不阻塞
+    events = EventReporter(settings.gateway_base_url, settings.billing_internal_token)
 
     executions = ExecutionRepository(db)
     orchestrator = Orchestrator(
         executions, ArtifactRepository(db), SkillRepository(db), sandbox, oss, kv, mq,
-        billing, settings)
-    watchdog = Watchdog(orchestrator, sandbox, kv, mq, settings)
+        billing, settings, events=events)
+    watchdog = Watchdog(orchestrator, sandbox, kv, mq, settings, events=events)
     callback_worker = CallbackWorker(
         UrllibHttpPort(), mq, executions, AppKeyRepository(db),
         settings.crypto_key, settings.callback_timeout_seconds,
-        settings.callback_max_attempts, settings.callback_delay_levels)
+        settings.callback_max_attempts, settings.callback_delay_levels,
+        events=events)
     _register_mq_consumers(settings, orchestrator, callback_worker, mq)
     return orchestrator, watchdog, callback_worker
 
@@ -85,6 +90,8 @@ def _register_mq_consumers(settings: Settings, orchestrator: Orchestrator,
 
 def run() -> None:
     settings = load_settings()
+    # 链路追踪可选启用：未配置 endpoint 时 no-op，不影响调度主链路
+    init_tracing(settings.otel_endpoint, settings.otel_service_name, settings.otel_sdk_disabled)
     _orchestrator, watchdog, _callback = build(settings)
 
     while True:

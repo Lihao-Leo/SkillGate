@@ -23,6 +23,7 @@ public class RocketMqExecuteMessageProducer implements ExecuteMessageProducer, S
     private final String nameServer;
     private final String producerGroup;
     private final String topic;
+    private final MqTraceContext mqTraceContext;
 
     private DefaultMQProducer producer;
     private volatile boolean running;
@@ -30,16 +31,21 @@ public class RocketMqExecuteMessageProducer implements ExecuteMessageProducer, S
     public RocketMqExecuteMessageProducer(
             @Value("${skill-platform.mq.name-server}") String nameServer,
             @Value("${skill-platform.mq.producer-group:gateway_execute_group}") String producerGroup,
-            @Value("${skill-platform.mq.topic:skill-execute}") String topic) {
+            @Value("${skill-platform.mq.topic:skill-execute}") String topic,
+            MqTraceContext mqTraceContext) {
         this.nameServer = nameServer;
         this.producerGroup = producerGroup;
         this.topic = topic;
+        this.mqTraceContext = mqTraceContext;
     }
 
     @Override
     public void sendExecute(String taskId) {
         try {
             Message message = new Message(topic, taskId.getBytes(StandardCharsets.UTF_8));
+            // trace 上下文透传：worker 消费后接续同一 trace（瀑布图跨服务串联）
+            mqTraceContext.inject(message);
+            log.info("skill-execute inject traceparent={}", message.getProperty("traceparent"));
             SendResult result = producer.send(message);
             log.info("skill-execute sent: taskId={}, msgId={}, status={}",
                     taskId, result.getMsgId(), result.getSendStatus());

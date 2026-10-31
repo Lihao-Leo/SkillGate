@@ -35,6 +35,7 @@ public class AdminController {
     private final com.skill.platform.gateway.service.SysConfigService sysConfigService;
     private final com.skill.platform.gateway.service.MetricsService metricsService;
     private final com.skill.platform.gateway.service.AdminOpsService adminOpsService;
+    private final com.skill.platform.gateway.service.ExecutionQueryService executionQueryService;
 
     // ------------------------------------------------------------------
     // 模型与能力（§10.1）
@@ -145,16 +146,39 @@ public class AdminController {
         return ApiResponse.ok(metricsService.dashboard(Math.min(Math.max(hours, 1), 720)));
     }
 
-    /** 最近任务列表（全平台轻量行）：hours/status 过滤 */
+    /** 最近任务列表（全平台轻量行）：hours/status/skillCode/tenantId/onlyFailed 筛选 */
     @GetMapping("/executions")
     public ApiResponse<com.baomidou.mybatisplus.extension.plugins.pagination.Page<Map<String, Object>>> listExecutions(
             @RequestParam(name = "hours", defaultValue = "24") int hours,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String skillCode,
+            @RequestParam(required = false) String tenantId,
+            @RequestParam(name = "onlyFailed", defaultValue = "false") boolean onlyFailed,
             @RequestParam(defaultValue = "1") int pageNo,
             @RequestParam(defaultValue = "20") int pageSize) {
         return ApiResponse.ok(adminOpsService.listExecutions(
-                Math.min(Math.max(hours, 1), 720), status,
+                Math.min(Math.max(hours, 1), 720), status, skillCode, tenantId, onlyFailed,
                 Math.min(Math.max(pageNo, 1), 1000), Math.min(Math.max(pageSize, 1), 100)));
+    }
+
+    /** 全平台任务详情（后管执行监控）：无租户过滤，视图与租户侧同构（含产物预签名/billing 块） */
+    @GetMapping("/executions/{taskId}")
+    public ApiResponse<com.skill.platform.gateway.service.ExecuteDtos.ExecutionView> adminExecution(
+            @PathVariable String taskId) {
+        return ApiResponse.ok(executionQueryService.getForAdmin(taskId));
+    }
+
+    /** 受理入参 JSON（后管排查用）：instructions/materials/context 全量原文 */
+    @GetMapping("/executions/{taskId}/input")
+    public ApiResponse<Object> executionInput(@PathVariable String taskId) {
+        return ApiResponse.ok(executionQueryService.getInputForAdmin(taskId));
+    }
+
+    /** 任务执行事件链（技术方案 v2.0 §1.6）：按 seq 升序，detail 已解析 */
+    @GetMapping("/executions/{taskId}/events")
+    public ApiResponse<java.util.List<Map<String, Object>>> executionEvents(
+            @PathVariable String taskId) {
+        return ApiResponse.ok(adminOpsService.executionEvents(taskId));
     }
 
     /** 异常处理台·重发：按回调契约重建 body 投 skill-callback-retry */

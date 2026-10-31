@@ -53,6 +53,47 @@ services:
       - "10909:10909"
       - "10911:10911"
 
+  # —— KB 向量库（可选）：docker compose --profile kb up -d ——
+  # CI / 无 KB 联调场景不受影响（默认 profile 不启动）
+  milvus-etcd:
+    image: quay.io/coreos/etcd:v3.5.14
+    container_name: skillgate-milvus-etcd
+    profiles: ["kb"]
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+    command: etcd -advertise-client-urls=http://milvus-etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+
+  milvus-minio:
+    image: minio/minio:RELEASE.2024-05-28T17-19-04Z
+    container_name: skillgate-milvus-minio
+    profiles: ["kb"]
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    command: minio server /minio_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  milvus:
+    image: milvusdb/milvus:v2.4.15
+    container_name: skillgate-milvus
+    profiles: ["kb"]
+    depends_on:
+      - milvus-etcd
+      - milvus-minio
+    environment:
+      ETCD_ENDPOINTS: milvus-etcd:2379
+      MINIO_ADDRESS: milvus-minio:9000
+    command: ["milvus", "run", "standalone"]
+    ports:
+      - "19530:19530"   # gRPC（gateway KbIndexPort）
+      - "9091:9091"     # 健康检查/指标
+
 volumes:
   mysql-data:
   redis-data:

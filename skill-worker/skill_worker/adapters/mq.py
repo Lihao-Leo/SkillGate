@@ -18,6 +18,46 @@ logger = logging.getLogger(__name__)
 
 DELAY_LEVEL_SECONDS = {5: 60, 9: 300, 14: 900}
 
+PROP_TRACEPARENT = "traceparent"
+
+
+def inject_trace(properties) -> None:
+    """把当前上下文的 traceparent 写入消息 properties（无 span / otel 缺失时 no-op）。
+
+    properties 为 None（客户端对象无该属性）时静默跳过——透传尽力而为，不影响收发。
+    """
+    if properties is None:
+        return
+    try:
+        from opentelemetry import propagate
+
+        carrier: dict = {}
+        propagate.inject(carrier)
+        if carrier:
+            properties.update({k: str(v) for k, v in carrier.items()})
+    except ImportError:
+        pass
+
+
+def consume_span(properties):
+    """消费 span 上下文管理器：从消息 properties extract traceparent 接续上游 trace。
+
+    otel 未安装时返回 nullcontext（无 span，行为与旧版一致）。
+    """
+    try:
+        import contextlib
+
+        from opentelemetry import propagate, trace
+
+        carrier = {k: v for k, v in (properties or {}).items() if isinstance(k, str)}
+        context = propagate.extract(carrier)
+        return trace.get_tracer("skill-worker").start_as_current_span(
+            "mq.consume", context=context)
+    except ImportError:
+        import contextlib
+
+        return contextlib.nullcontext()
+
 
 class MqPort(Protocol):
     def send(self, topic: str, payload: dict[str, Any], delay_level: int = 0) -> None: ...
@@ -74,6 +114,7 @@ class RocketMqAdapter:
         if delay_level:
             seconds = DELAY_LEVEL_SECONDS.get(delay_level, 60)
             message.delivery_timestamp = int((time.time() + seconds) * 1000)
+        inject_trace(getattr(message, "properties", None))
         send_receipt = self._producer.send(message)
         logger.info("mq sent: topic=%s message_id=%s", topic,
                     getattr(send_receipt, "message_id", "?"))
@@ -127,7 +168,11 @@ class RocketMqAdapter:
         renewer = threading.Thread(target=renew, daemon=True)
         renewer.start()
         try:
-            handler(message.body)
+            props = getattr(message, "properties", None)
+            logger.info("mq message received: properties_keys=%s",
+                        list(props.keys()) if isinstance(props, dict) else type(props).__name__)
+            with consume_span(props):
+                handler(message.body)
             try:
                 consumer.ack(message)
             except Exception as error:  # noqa: BLE001 - 处理成功但 ack 失败：仅记录

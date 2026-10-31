@@ -52,6 +52,27 @@ public class MetricsService {
         board.put("insufficientRatioToday", finished + insufficient == 0 ? null
                 : Math.round(insufficient * 1000.0 / (finished + insufficient)) / 10.0);
 
+        // 失败原因 Top5（按 error_code 聚合）：配合任务流水线，运营定位高频失败
+        Map<String, Long> failureCount = new LinkedHashMap<>();
+        for (Execution e : executionMapper.selectList(new LambdaQueryWrapper<Execution>()
+                .eq(Execution::getStatus, Execution.STATUS_FAILED)
+                .ge(Execution::getCreatedAt, since)
+                .select(Execution::getErrorCode))) {
+            if (e.getErrorCode() != null && !e.getErrorCode().isBlank()) {
+                failureCount.merge(e.getErrorCode(), 1L, Long::sum);
+            }
+        }
+        board.put("failureTop", failureCount.entrySet().stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                .limit(5)
+                .map(en -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("errorCode", en.getKey());
+                    row.put("count", en.getValue());
+                    return row;
+                })
+                .toList());
+
         // 24h 吞吐：受理（created_at）/完成（finished_at）按小时桶
         List<Execution> recent = executionMapper.selectList(new LambdaQueryWrapper<Execution>()
                 .ge(Execution::getCreatedAt, since)

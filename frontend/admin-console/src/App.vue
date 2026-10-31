@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Box, Key, Monitor, Wallet, Setting, Connection, Cpu, Collection, Tools,
-  Search, Bell,
+  Search, Bell, Sunny, Moon, DataLine,
 } from '@element-plus/icons-vue'
 import { useCredentialsStore } from './stores/credentials'
 
@@ -12,6 +12,14 @@ const router = useRouter()
 const creds = useCredentialsStore()
 
 const activeMenu = computed(() => '/' + (route.path.split('/')[1] ?? 'executions'))
+
+const isDark = ref(document.documentElement.classList.contains('dark'))
+
+function toggleTheme() {
+  isDark.value = !isDark.value
+  document.documentElement.classList.toggle('dark', isDark.value)
+  localStorage.setItem('sg-theme', isDark.value ? 'dark' : 'light')
+}
 
 const menuGroups = [
   {
@@ -63,7 +71,14 @@ function logout() {
         <span class="env-badge">生产环境</span>
       </div>
       <div class="top-right">
-        <el-icon class="icon-btn"><Search /></el-icon>
+        <el-tooltip content="监控大屏（全屏轮播）" placement="bottom">
+          <el-icon class="icon-btn" @click="router.push('/wall')"><DataLine /></el-icon>
+        </el-tooltip>
+        <el-tooltip :content="isDark ? '切到亮色' : '切到暗色'" placement="bottom">
+          <el-icon class="icon-btn" data-testid="theme-toggle" @click="toggleTheme">
+            <Sunny v-if="isDark" /><Moon v-else />
+          </el-icon>
+        </el-tooltip>
         <span class="bell">
           <el-icon class="icon-btn"><Bell /></el-icon>
           <span class="dot" />

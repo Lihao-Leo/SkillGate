@@ -110,6 +110,19 @@ export interface ExecutionView {
   context?: unknown
 }
 
+/** 执行事件链单条事件（技术方案 v2.0 §1.6，detail 已解析为对象） */
+export interface ExecutionEventView {
+  taskId: string
+  seq: number
+  stage: string
+  status: string
+  service: string
+  durationMs?: number | null
+  traceId?: string | null
+  occurredAt?: string | null
+  detail?: Record<string, unknown> | null
+}
+
 export interface BalanceView {
   appKeyId: string
   balance: number
@@ -325,9 +338,20 @@ export const gatewayApi = (() => {
 
     adminMetricsDashboard: (hours: number) =>
       client.adminJson<any>('GET', `/api/v1/admin/metrics/dashboard?hours=${hours}`),
-    adminListExecutions: (hours: number, status: string, pageNo: number, pageSize: number) =>
+    adminListExecutions: (hours: number, opts: {
+      status?: string; skill?: string; tenant?: string; onlyFailed?: boolean;
+      pageNo: number; pageSize: number
+    }) =>
       client.adminJson<{ total: number; records: any[] }>('GET',
-        `/api/v1/admin/executions?hours=${hours}&status=${status}&pageNo=${pageNo}&pageSize=${pageSize}`),
+        '/api/v1/admin/executions' + buildQuery({
+          hours,
+          status: opts.status || undefined,
+          skillCode: opts.skill,
+          tenantId: opts.tenant,
+          onlyFailed: opts.onlyFailed ? 'true' : undefined,
+          pageNo: opts.pageNo,
+          pageSize: opts.pageSize,
+        })),
     adminResendCallback: (taskId: string) =>
       client.adminJson<any>('POST', `/api/v1/admin/executions/${encodeURIComponent(taskId)}/callback-resend`),
     retryExecution: (taskId: string) =>
@@ -335,6 +359,13 @@ export const gatewayApi = (() => {
         `/api/v1/executions/${encodeURIComponent(taskId)}/retry`),
     adminGiveUpCallback: (taskId: string) =>
       client.adminJson<any>('POST', `/api/v1/admin/executions/${encodeURIComponent(taskId)}/callback-giveup`),
+    adminExecutionDetail: (taskId: string) =>
+      client.adminJson<ExecutionView>('GET', `/api/v1/admin/executions/${encodeURIComponent(taskId)}`),
+    adminExecutionEvents: (taskId: string) =>
+      client.adminJson<ExecutionEventView[]>('GET',
+        `/api/v1/admin/executions/${encodeURIComponent(taskId)}/events`),
+    adminExecutionInput: (taskId: string) =>
+      client.adminJson<unknown>('GET', `/api/v1/admin/executions/${encodeURIComponent(taskId)}/input`),
     adminMetricsOverview: () =>
       client.adminJson<MetricsOverview>('GET', '/api/v1/admin/metrics/overview'),
 

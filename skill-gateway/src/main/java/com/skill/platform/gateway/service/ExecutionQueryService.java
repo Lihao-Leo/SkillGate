@@ -55,6 +55,46 @@ public class ExecutionQueryService {
     }
 
     /**
+     * 全平台维度任务详情（后管执行监控用）：无租户过滤，视图组装与租户侧完全同构
+     * （终态含产物预签名/billing 块，走同一 2s 缓存）。
+     */
+    public ExecutionView getForAdmin(String taskId) {
+        Execution execution = executionMapper.selectOne(new LambdaQueryWrapper<Execution>()
+                .eq(Execution::getTaskId, taskId).last("LIMIT 1"));
+        if (execution == null) {
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "任务不存在: " + taskId);
+        }
+        return Execution.isTerminal(execution.getStatus()) ? terminalView(execution) : runningView(execution);
+    }
+
+    /**
+     * 受理入参 JSON（后管排查用）：读 input_ref 指向的 OSS 对象解析返回
+     * （instructions/materials/context 全量原文——运营定位「这单为什么结果不对」的依据）。
+     */
+    public JsonNode getInputForAdmin(String taskId) {
+        Execution execution = executionMapper.selectOne(new LambdaQueryWrapper<Execution>()
+                .eq(Execution::getTaskId, taskId).last("LIMIT 1"));
+        if (execution == null || execution.getInputRef() == null) {
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "任务不存在或无入参: " + taskId);
+        }
+        byte[] bytes = objectStorage.get(execution.getInputRef());
+        if (bytes == null) {
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND,
+                    "入参文件不存在（OSS）: " + execution.getInputRef());
+        }
+        JsonNode input;
+        try {
+            input = JsonCodec.tree(new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
+        } catch (IllegalArgumentException parseFailure) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "入参 JSON 解析失败");
+        }
+        if (input.isMissingNode()) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "入参 JSON 解析失败");
+        }
+        return input;
+    }
+
+    /**
      * 最近任务列表（§10.1 执行监控）：本租户维度分页，轻量行（不签产物 URL）。
      */
     public Page<ExecutionView> list(CallerContext caller, String status, int pageNo, int pageSize) {

@@ -89,7 +89,7 @@ class CallbackWorker:
 
     def __init__(self, http: HttpPort, mq, execution_repo, app_key_repo, crypto_key: str,
                  timeout_seconds: float = 10.0, max_attempts: int = 3,
-                 delay_levels: tuple = (5, 9, 14)):
+                 delay_levels: tuple = (5, 9, 14), events=None):
         self._http = http
         self._mq = mq
         self._executions = execution_repo
@@ -98,6 +98,7 @@ class CallbackWorker:
         self._timeout = timeout_seconds
         self._max_attempts = max_attempts
         self._delay_levels = delay_levels
+        self._events = events
 
     def send_now(self, execution: Execution, body: dict) -> bool | None:
         """投递一次：True=成功；False=可重试失败；None=不可重试（直接死信）。"""
@@ -129,26 +130,59 @@ class CallbackWorker:
         execution = self._executions.get(task_id)
         if execution is None or not execution.callback_url:
             return
+        attempt_start = time.time()
         sent = self.send_now(execution, body)
         if sent is True:
             self._executions.set_callback_status(task_id, "SENT")
+            self._report(execution, "OK", attempt, (time.time() - attempt_start) * 1000)
             return
         if sent is None:
             self._mq.send("skill-callback-dlq", {"taskId": task_id, "attempt": attempt,
                                                  "callbackUrl": execution.callback_url,
                                                  "reason": "missing app secret"})
             self._executions.set_callback_status(task_id, "DEAD_LETTER")
+            self._report(execution, "FAILED", attempt,
+                         (time.time() - attempt_start) * 1000,
+                         {"error_code": "DEAD_LETTER", "reason": "missing app secret"})
             return
         if attempt >= self._max_attempts:
             # 超限进死信并告警（§5.5：指数退避 3 次，超限进死信）
             self._mq.send("skill-callback-dlq", {"taskId": task_id, "attempt": attempt,
                                                  "callbackUrl": execution.callback_url})
             self._executions.set_callback_status(task_id, "DEAD_LETTER")
+            self._report(execution, "FAILED", attempt,
+                         (time.time() - attempt_start) * 1000,
+                         {"error_code": "DEAD_LETTER"})
             return
         next_attempt = attempt + 1
         self._executions.set_callback_status(task_id, "RETRYING")
+        self._report(execution, "FAILED", attempt,
+                     (time.time() - attempt_start) * 1000,
+                     {"error_code": "RETRYING", "next_attempt": next_attempt})
         # attempt1 失败 → 1min 后重投 attempt2；attempt2 失败 → 5min 后 attempt3（1/5/15 退避）
         delay_level = self._delay_levels[min(attempt - 1, len(self._delay_levels) - 1)]
         self._mq.send("skill-callback-retry",
                       {"taskId": task_id, "body": body, "attempt": next_attempt},
                       delay_level=delay_level)
+
+    def _report(self, execution: Execution, status: str, attempt: int, duration_ms: float,
+                detail: dict | None = None) -> None:
+        """上报 CALLBACK 事件（技术方案 v2.0 §1.3）：观测不阻塞回调主链路。"""
+        if self._events is None:
+            return
+        try:
+            from ..telemetry import current_trace_id
+
+            self._events.report({
+                "taskId": execution.task_id,
+                "tenantId": execution.tenant_id,
+                "stage": "CALLBACK",
+                "status": status,
+                "service": "worker",
+                "durationMs": int(duration_ms),
+                "detail": dict(detail or {}, attempt=attempt),
+                "traceId": current_trace_id(),
+                "occurredAt": datetime.now().isoformat(timespec="milliseconds"),
+            })
+        except Exception:  # noqa: BLE001
+            pass

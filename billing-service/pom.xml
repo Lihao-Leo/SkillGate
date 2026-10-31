@@ -25,6 +25,8 @@
         <rocketmq-client.version>5.3.1</rocketmq-client.version>
         <!-- 覆盖 Boot 管理版本：1.18.30 不支持构建环境 JDK 25 -->
         <lombok.version>1.18.48</lombok.version>
+        <!-- 覆盖 Boot 管理的 otel 1.31.0：opentelemetry-spring-boot-starter 2.10.0 需 1.44.x（ComponentLoader） -->
+        <opentelemetry.version>1.44.0</opentelemetry.version>
     </properties>
 
     <dependencies>
@@ -57,6 +59,23 @@
             <groupId>org.apache.rocketmq</groupId>
             <artifactId>rocketmq-client</artifactId>
             <version>${rocketmq-client.version}</version>
+            <exclusions>
+                <!-- rocketmq 传递的旧版 otel 与 opentelemetry-spring-boot-starter 冲突（同 gateway 处理） -->
+                <exclusion>
+                    <groupId>io.opentelemetry</groupId>
+                    <artifactId>opentelemetry-exporter-prometheus</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.opentelemetry</groupId>
+                    <artifactId>opentelemetry-exporter-logging-otlp</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!-- 链路追踪（技术方案 v2.0 §1.7）：默认 otel.traces.exporter=none，经 OTEL_TRACES_EXPORTER=otlp 启用 -->
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-spring-boot-starter</artifactId>
+            <version>2.10.0</version>
         </dependency>
 
         <dependency>
