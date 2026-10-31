@@ -67,7 +67,7 @@ function logout() {
         <span class="mark"><el-icon :size="17"><Connection /></el-icon></span>
         <b>SkillGate</b>
         <span class="divider">·</span>
-        <span class="product">Skill 统一接入网关 · 管理后台</span>
+        <span class="product">Skill 统一接入与执行平台 · 管理后台</span>
         <span class="env-badge">生产环境</span>
       </div>
       <div class="top-right">

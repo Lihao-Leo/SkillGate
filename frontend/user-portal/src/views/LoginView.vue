@@ -52,7 +52,7 @@ async function login() {
       <div class="side">
         <div class="logo">S</div>
         <h2>SkillGate</h2>
-        <p>按点数计费的 Skill 统一接入网关</p>
+        <p>按点数计费的 Skill 统一接入与执行平台</p>
         <ul>
           <li>· 充值即用，按次 / 按量计费</li>
           <li>· AppKey 签发，Secret 一次展示</li>

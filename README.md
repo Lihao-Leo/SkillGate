@@ -1,6 +1,6 @@
-# SkillGate — 所有 Skill 的统一接入网关
+# SkillGate — Skill 统一接入与执行平台
 
-用户将技能（Skill）上传到平台，外部调用方（服务端 / agent 平台）通过网关访问技能。**网关统一承担：鉴权 · 请求转发 · 执行调度 · 用量统计 · 限流 · 监控**。
+用户将技能（Skill）上传到平台，外部调用方（服务端 / agent 平台）经统一网关发起调用，平台负责沙箱执行编排。**平台统一承担：鉴权限流 · 执行调度 · 沙箱隔离 · 计费结算 · 用量统计 · 可观测**。
 
 ![SkillGate 整体架构](docs/images/architecture-overview.jpg)
 
