@@ -20,12 +20,12 @@ import java.time.Duration;
 import java.util.HashSet;
 
 /**
- * 模型网关（§4.5）：OpenAI 兼容转发。后管 model_provider 表即唯一路由配置——
- * 按请求体 model=alias 实时查表（含 API Key AES 解密、fallback_alias 回退链），
- * 配置即生效，无外部网关组件（LiteLLM 不再需要）。
+ * 模型网关（§4.5）：OpenAI 兼容转发（/v1/chat/completions 与 /v1/embeddings）。
+ * 后管 model_provider 表即唯一路由配置——按请求体 model=alias 实时查表
+ * （含 API Key AES 解密、fallback_alias 回退链），配置即生效，无外部网关组件。
  *
  * <p>鉴权：仅限沙箱执行流量（Bearer {internal-token}-task-{taskId}，worker 注入）。
- * 计量：usage 由技能侧 toolset 上报（点数计费口径与 LiteLLM 无关）。
+ * 计量：chat usage 由技能侧 toolset 上报；embeddings usage 随响应原样透传（V2.0 KB 用）。
  */
 @Slf4j
 @Service
@@ -39,6 +39,10 @@ public class ModelGatewayService {
     @Value("${skill-platform.model-gateway.internal-token:${INTERNAL_TOKEN:dev-internal-token}}")
     private String internalToken;
 
+    /** embeddings 单请求 input 上限（批向量化由调用方分批，防大请求打满上游） */
+    @Value("${skill-platform.model-gateway.embed-max-inputs:64}")
+    private int maxEmbedInputs;
+
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
@@ -50,20 +54,87 @@ public class ModelGatewayService {
         return authorization != null && authorization.startsWith("Bearer " + internalToken);
     }
 
-    /** 同步转发（含流式响应体透传——由调用方写回输出流时逐块 flush） */
+    /** /v1/chat/completions 同步转发（含流式响应体透传——由调用方写回输出流时逐块 flush） */
     public GatewayResult chat(String rawBody) throws IOException, InterruptedException {
-        JsonNode root;
-        try {
-            root = objectMapper.readTree(rawBody == null || rawBody.isBlank() ? "{}" : rawBody);
-        } catch (IOException e) {
+        JsonNode root = parseBodyOrNull(rawBody);
+        if (root == null) {
             return error(400, "invalid_request_error", "请求体不是合法 JSON");
         }
-        String alias = root.path("model").asText(null);
+        GatewayResult aliasError = requireAlias(root);
+        if (aliasError != null) {
+            return aliasError;
+        }
+        return forwardViaAliasChain(root, "chat/completions");
+    }
+
+    /**
+     * /v1/embeddings 同步转发（技术方案 v2.0 §2.3）：alias 路由复用（含回退链）；
+     * input 允许字符串或字符串数组，批量上限 embed-max-inputs；usage 随上游响应原样透传。
+     */
+    public GatewayResult embeddings(String rawBody) throws IOException, InterruptedException {
+        JsonNode root = parseBodyOrNull(rawBody);
+        if (root == null) {
+            return error(400, "invalid_request_error", "请求体不是合法 JSON");
+        }
+        GatewayResult aliasError = requireAlias(root);
+        if (aliasError != null) {
+            return aliasError;
+        }
+        GatewayResult inputError = validateEmbeddingsInput(root);
+        if (inputError != null) {
+            return inputError;
+        }
+        return forwardViaAliasChain(root, "embeddings");
+    }
+
+    /** 请求体解析（非法 JSON 返回 null，由调用方转 400） */
+    JsonNode parseBodyOrNull(String rawBody) {
+        try {
+            return objectMapper.readTree(rawBody == null || rawBody.isBlank() ? "{}" : rawBody);
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /** 校验 model 别名；不合法时返回 400 错误结果，合法返回 null */
+    private GatewayResult requireAlias(JsonNode root) {        String alias = root.path("model").asText(null);
         if (alias == null || alias.isBlank()) {
             return error(400, "invalid_request_error", "model 不能为空（填后管配置的能力别名）");
         }
-        boolean stream = root.path("stream").asBoolean(false);
+        return null;
+    }
 
+    /** embeddings input 校验；不合法时返回 400 错误结果，合法返回 null */
+    private GatewayResult validateEmbeddingsInput(JsonNode root) {
+        JsonNode input = root.path("input");
+        if (input.isMissingNode() || input.isNull()) {
+            return error(400, "invalid_request_error", "input 不能为空");
+        }
+        if (input.isArray()) {
+            if (input.isEmpty()) {
+                return error(400, "invalid_request_error", "input 不能为空");
+            }
+            for (JsonNode element : input) {
+                if (!element.isTextual()) {
+                    return error(400, "invalid_request_error", "input 元素必须为字符串");
+                }
+            }
+            if (input.size() > maxEmbedInputs) {
+                return error(400, "invalid_request_error",
+                        "input 数量超上限 " + maxEmbedInputs + "（批向量化请分批调用）");
+            }
+        } else if (!input.isTextual()) {
+            return error(400, "invalid_request_error", "input 必须为字符串或字符串数组");
+        }
+        return null;
+    }
+
+    /**
+     * alias 回退链转发：查 model_provider（实时表）→ 解密 Key → 替换 model → 上游转发。
+     * 5xx/不可达回退 fallback_alias（防环，最多 4 跳）；全部失败返回 502。
+     */
+    private GatewayResult forwardViaAliasChain(JsonNode root, String pathSuffix) throws IOException, InterruptedException {
+        String alias = root.path("model").asText(null);
         String currentAlias = alias;
         var visited = new HashSet<String>();
         int attempts = 0;
@@ -83,7 +154,7 @@ public class ModelGatewayService {
                 return error(500, "gateway_error", "模型密钥解密失败（检查 CRYPTO_KEY 一致性）");
             }
             String body = withModel(root, provider.getModelName());
-            String url = chatCompletionsUrl(provider.getEndpoint());
+            String url = upstreamUrl(provider.getEndpoint(), pathSuffix);
             try {
                 HttpResponse<java.io.InputStream> upstream = http.send(
                         HttpRequest.newBuilder(URI.create(url))
@@ -103,7 +174,7 @@ public class ModelGatewayService {
                 byte[] bytes = upstream.body().readAllBytes();
                 return new GatewayResult(upstream.statusCode(), bytes,
                         upstream.headers().firstValue("Content-Type")
-                                .orElse(stream ? "text/event-stream" : "application/json"));
+                                .orElse("application/json"));
             } catch (IOException | InterruptedException connectError) {
                 if (connectError instanceof InterruptedException) {
                     Thread.currentThread().interrupt();
@@ -123,16 +194,21 @@ public class ModelGatewayService {
         return copy.toString();
     }
 
-    /** endpoint 约定填到 /v1（或完整路径），此处拼接 /chat/completions */
-    static String chatCompletionsUrl(String endpoint) {
+    /** endpoint 约定填到 /v1（或完整路径），此处拼接上游路径（chat/completions | embeddings） */
+    static String upstreamUrl(String endpoint, String pathSuffix) {
         String base = endpoint == null ? "" : endpoint.strip();
         while (base.endsWith("/")) {
             base = base.substring(0, base.length() - 1);
         }
-        if (base.endsWith("/chat/completions")) {
+        if (base.endsWith("/" + pathSuffix)) {
             return base;
         }
-        return base + "/chat/completions";
+        return base + "/" + pathSuffix;
+    }
+
+    /** 兼容保留：chat completions URL 拼接（既有调用方/测试引用） */
+    static String chatCompletionsUrl(String endpoint) {
+        return upstreamUrl(endpoint, "chat/completions");
     }
 
     private static GatewayResult error(int status, String type, String message) {

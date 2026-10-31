@@ -40,4 +40,25 @@ public class ModelGatewayController {
         response.getOutputStream().write(result.body());
         response.getOutputStream().flush();
     }
+
+    /** OpenAI 兼容 /v1/embeddings（技术方案 v2.0 §2.3）：鉴权与转发语义与 chat/completions 一致 */
+    @PostMapping("/embeddings")
+    public void embeddings(HttpServletRequest request, HttpServletResponse response)
+            throws IOException, InterruptedException {
+        String auth = request.getHeader("Authorization");
+        if (!modelGatewayService.authorize(auth)) {
+            response.setStatus(401);
+            response.setContentType("application/json");
+            response.getWriter().write("{\"error\":{\"message\":\"invalid api key（应为 "
+                    + "worker 注入的 internal-token-task-*）\",\"type\":\"invalid_request_error\"}}");
+            return;
+        }
+        String raw = new String(request.getInputStream().readAllBytes(),
+                java.nio.charset.StandardCharsets.UTF_8);
+        ModelGatewayService.GatewayResult result = modelGatewayService.embeddings(raw);
+        response.setStatus(result.status());
+        response.setContentType(result.contentType());
+        response.getOutputStream().write(result.body());
+        response.getOutputStream().flush();
+    }
 }

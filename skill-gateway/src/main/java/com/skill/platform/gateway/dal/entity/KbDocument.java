@@ -26,8 +26,11 @@ public class KbDocument {
     /** 已入库分块数 */
     private Integer chunkCount;
 
-    /** 0=待入库 1=已入库 2=失败 */
+    /** 0=待入库 3=处理中 1=已入库 2=失败 */
     private Integer status;
+
+    /** 入库失败原因（status=2 时可见） */
+    private String errorMessage;
 
     private LocalDateTime createdAt;
 }

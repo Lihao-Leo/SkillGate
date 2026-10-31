@@ -51,6 +51,9 @@ public class Skill {
     /** 调用说明元数据 JSON（导出 markdown/openapi/tool-schema 的数据源） */
     private String invocationSpec;
 
+    /** 默认授权知识库集 [{kbId,topK}]（V2.0 声明绑定；沙箱授权集=声明∪context.kbIds） */
+    private String kbBindings;
+
     /** 埋点令牌（skt- 前缀）；NULL=非公开分发 */
     private String telemetryToken;
 
