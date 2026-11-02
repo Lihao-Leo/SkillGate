@@ -54,6 +54,9 @@ class PyMySqlDatabase:
             host=host, port=port, db=db, user=user, password=password,
             charset="utf8mb4", autocommit=True,
             cursorclass=pymysql.cursors.DictCursor,
+            # 时区对齐：NOW()/CURRENT_TIMESTAMP 与应用本地一致（跨服务时钟一致性，
+            # 看门狗/统计按本地时间比较 DB 时间戳——否则 UTC 容器会误判 pending 年龄）
+            init_command="SET time_zone = '+08:00'",
         )
         self._local = threading.local()
 
