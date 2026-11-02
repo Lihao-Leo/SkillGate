@@ -58,6 +58,7 @@ recharge-service（充值平台：订单 / 支付渠道 / C 端用户）──or
 | 取消 | PENDING 直接 CANCELLED + 退款；RUNNING 置 CANCELLING 由 worker 杀 Job 收殓 |
 | 多租户 | OSS 前缀逻辑隔离 + 预签名（凭据不出平台）；MySQL 行级 tenant_id；Milvus collection 物理隔离 |
 | 执行链路观测 | 全任务节点事件落库 `execution_event`（受理五关→沙箱→结算→回调），后管时间线 / CI-CD 式流程图 / 监控大屏纯 MySQL 渲染；OTel 内置默认关，零部署组件 |
+| 运行中治理 | 管理台强制终止（Redis 加速标志立即杀沙箱，按已发生用量结算 / 余款退还）；飞书群告警（长跑 / 失败 / 看门狗干预 / token 超限，可选加签，未配置 no-op）；列表按时长 / tokens 排序 |
 
 ## 快速开始
 

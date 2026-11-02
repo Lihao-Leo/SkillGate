@@ -340,7 +340,7 @@ export const gatewayApi = (() => {
       client.adminJson<any>('GET', `/api/v1/admin/metrics/dashboard?hours=${hours}`),
     adminListExecutions: (hours: number, opts: {
       status?: string; skill?: string; tenant?: string; onlyFailed?: boolean;
-      pageNo: number; pageSize: number
+      sortBy?: string; pageNo: number; pageSize: number
     }) =>
       client.adminJson<{ total: number; records: any[] }>('GET',
         '/api/v1/admin/executions' + buildQuery({
@@ -349,9 +349,13 @@ export const gatewayApi = (() => {
           skillCode: opts.skill,
           tenantId: opts.tenant,
           onlyFailed: opts.onlyFailed ? 'true' : undefined,
+          sortBy: opts.sortBy || undefined,
           pageNo: opts.pageNo,
           pageSize: opts.pageSize,
         })),
+    adminForceCancel: (taskId: string) =>
+      client.adminJson<{ taskId: string; status: string; cancelled: boolean }>('POST',
+        `/api/v1/admin/executions/${encodeURIComponent(taskId)}/force-cancel`),
     adminResendCallback: (taskId: string) =>
       client.adminJson<any>('POST', `/api/v1/admin/executions/${encodeURIComponent(taskId)}/callback-resend`),
     retryExecution: (taskId: string) =>

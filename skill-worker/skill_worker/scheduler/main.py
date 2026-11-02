@@ -12,6 +12,7 @@ import time
 from ..adapters.billing import HttpBillingClient
 from ..adapters.db import PyMySqlDatabase
 from ..adapters.events import EventReporter
+from ..adapters.feishu import FeishuNotifier
 from ..adapters.k8s import K8sSandbox, LocalSubprocessSandbox
 from ..adapters.kv import RedisKv
 from ..adapters.mq import RocketMqAdapter
@@ -49,12 +50,15 @@ def build(settings: Settings) -> tuple[Orchestrator, Watchdog, CallbackWorker]:
     mq = RocketMqAdapter(settings.mq_proxy_endpoint)
     # 执行事件上报（技术方案 v2.0 §1.4）：缓冲批量 POST gateway internal 端点，观测不阻塞
     events = EventReporter(settings.gateway_base_url, settings.billing_internal_token)
+    # 飞书群告警（可选）：长跑/失败/看门狗干预/token 超限，未配置 webhook 即 no-op
+    notifier = FeishuNotifier(settings.feishu_webhook_url, settings.feishu_secret)
 
     executions = ExecutionRepository(db)
     orchestrator = Orchestrator(
         executions, ArtifactRepository(db), SkillRepository(db), sandbox, oss, kv, mq,
-        billing, settings, events=events)
-    watchdog = Watchdog(orchestrator, sandbox, kv, mq, settings, events=events)
+        billing, settings, events=events, notifier=notifier)
+    watchdog = Watchdog(orchestrator, sandbox, kv, mq, settings, events=events,
+                        notifier=notifier)
     callback_worker = CallbackWorker(
         UrllibHttpPort(), mq, executions, AppKeyRepository(db),
         settings.crypto_key, settings.callback_timeout_seconds,

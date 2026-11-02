@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import { gatewayApi, type ExecutionEventView, type ExecutionView } from '../api/gateway'
 import ExecutionTimeline from '../components/ExecutionTimeline.vue'
@@ -18,7 +18,7 @@ const activeTab = ref('list')
 const recentLoading = ref(false)
 
 // ---------- 列表筛选 ----------
-const filters = reactive({ status: '', skill: '', tenant: '', onlyFailed: false })
+const filters = reactive({ status: '', skill: '', tenant: '', onlyFailed: false, sortBy: '' })
 
 async function loadBoard() {
   try {
@@ -36,6 +36,7 @@ async function loadRecent() {
       skill: filters.skill.trim() || undefined,
       tenant: filters.tenant.trim() || undefined,
       onlyFailed: filters.onlyFailed,
+      sortBy: filters.sortBy || undefined,
       pageNo: recent.pageNo,
       pageSize: recent.pageSize,
     })
@@ -45,6 +46,31 @@ async function loadRecent() {
     recent.items = []
   } finally {
     recentLoading.value = false
+  }
+}
+
+/** 表头排序（时长/tokens 降序排查最耗时、最贵任务） */
+function onSortChange({ prop }: { prop: string }) {
+  filters.sortBy = prop === 'durationMs' ? 'duration' : prop === 'tokensUsed' ? 'tokens' : ''
+  applyFilters()
+}
+
+/** 管理台强制终止：立即杀沙箱，按已发生用量结算/退款（worker 不可达时由看门狗兜底收殓） */
+async function forceCancelTask(taskIdToCancel: string) {
+  try {
+    await ElMessageBox.confirm(
+      '立即终止该任务：沙箱将被杀死，已发生用量（模型 token 等）正常结算，未消耗冻结点数全额退还。确认强制终止？',
+      '强制终止', { confirmButtonText: '强制终止', cancelButtonText: '取消', type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    const result = await gatewayApi.adminForceCancel(taskIdToCancel)
+    ElMessage.success(result.cancelled ? '已受理强制终止' : `当前状态 ${result.status} 不可终止`)
+    if (execution.value?.taskId === taskIdToCancel) await queryById(taskIdToCancel)
+    await loadRecent()
+  } catch (e) {
+    ElMessage.error((e as Error).message)
   }
 }
 
@@ -171,17 +197,6 @@ async function retryTask(taskIdToRetry: string) {
     ElMessage.success(`已重新受理：${result.taskId}`)
     taskId.value = result.taskId
     await queryById(result.taskId)
-    await loadRecent()
-  } catch (e) {
-    ElMessage.error((e as Error).message)
-  }
-}
-
-async function cancelTask(taskIdToCancel: string) {
-  try {
-    const result = await gatewayApi.cancelExecution(taskIdToCancel)
-    ElMessage.success(result.cancelled ? '已受理取消' : `当前状态 ${result.status} 不可取消`)
-    if (execution.value?.taskId === taskIdToCancel) await queryById(taskIdToCancel)
     await loadRecent()
   } catch (e) {
     ElMessage.error((e as Error).message)
@@ -407,7 +422,8 @@ async function giveUpCallback(taskIdToGiveUp: string) {
           </div>
         </div>
         <el-table :data="recent.items" size="small" data-testid="recent-table"
-                  v-loading="recentLoading" style="cursor:pointer; width: 100%" @row-click="pick">
+                  v-loading="recentLoading" style="cursor:pointer; width: 100%"
+                  @row-click="pick" @sort-change="onSortChange">
           <el-table-column prop="taskId" label="taskId" width="250" class-name="mono" />
           <el-table-column prop="tenantId" label="租户" width="140" />
           <el-table-column prop="skillCode" label="Skill" min-width="170" />
@@ -426,8 +442,9 @@ async function giveUpCallback(taskIdToGiveUp: string) {
               <span v-else>—</span>
             </template>
           </el-table-column>
-          <el-table-column label="时长" width="80">
-            <template #default="{ row }">{{ fmtDuration(row.durationMs) }}</template>
+          <el-table-column prop="durationMs" label="时长" width="90" sortable="custom" />
+          <el-table-column prop="tokensUsed" label="tokens" width="100" sortable="custom">
+            <template #default="{ row }">{{ row.tokensUsed?.toLocaleString() ?? '—' }}</template>
           </el-table-column>
           <el-table-column label="操作" width="90">
             <template #default="{ row }">
@@ -436,7 +453,7 @@ async function giveUpCallback(taskIdToGiveUp: string) {
                          @click.stop="retryTask(row.taskId)"
                          :data-testid="`retry-${row.taskId}`">重试</el-button>
               <el-button v-if="row.status === 'RUNNING' || row.status === 'PENDING'" link
-                         type="danger" size="small" @click.stop="cancelTask(row.taskId)">取消</el-button>
+                         type="danger" size="small" @click.stop="forceCancelTask(row.taskId)">终止</el-button>
             </template>
           </el-table-column>
           <template #empty>
@@ -501,9 +518,9 @@ async function giveUpCallback(taskIdToGiveUp: string) {
         <el-button size="small" plain data-testid="input-btn" @click="showInput">查看入参 JSON</el-button>
         <el-button v-if="execution.status === 'FAILED'" size="small" type="warning" plain
                    @click="retryTask(execution.taskId)">重试</el-button>
-        <el-button v-if="execution.status === 'RUNNING' || execution.status === 'PENDING'"
+        <el-button v-if="execution.status === 'RUNNING' || execution.status === 'PENDING' || execution.status === 'CANCELLING'"
                    size="small" type="danger" plain data-testid="cancel-btn"
-                   @click="cancelTask(execution.taskId)">取消任务</el-button>
+                   @click="forceCancelTask(execution.taskId)">强制终止</el-button>
       </div>
       <el-alert v-if="execution.error" type="error" :closable="false" style="margin: 10px 0"
                 :title="`${execution.error.code}: ${execution.error.message}`" data-testid="execution-error" />

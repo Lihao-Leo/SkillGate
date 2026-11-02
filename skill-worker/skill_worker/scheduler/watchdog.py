@@ -23,41 +23,81 @@ MISSING_STREAK_KEY = "watchdog:missing:{task_id}"
 
 class Watchdog:
     def __init__(self, orchestrator: Orchestrator, sandbox: SandboxPort, kv: KvPort,
-                 mq: MqPort, settings: Settings, events=None):
+                 mq: MqPort, settings: Settings, events=None, notifier=None):
         self._orchestrator = orchestrator
         self._sandbox = sandbox
         self._kv = kv
         self._mq = mq
         self._settings = settings
         self._events = events
+        self._notifier = notifier
         self._executions = orchestrator._executions  # noqa: SLF001 - 同模块协作
 
-    def _watchdog_event(self, execution, action: str, detail: dict) -> None:
-        """上报 WATCHDOG 干预事件（重投/收殓/置败）；观测失败不影响看门狗主流程。"""
-        if self._events is None:
-            return
-        try:
-            from ..telemetry import current_trace_id
-
-            self._events.report({
-                "taskId": execution.task_id,
-                "tenantId": execution.tenant_id,
-                "stage": "WATCHDOG",
-                "status": "OK",
-                "service": "worker",
-                "durationMs": None,
-                "detail": dict(detail, action=action),
-                "traceId": current_trace_id(),
-                "occurredAt": datetime.now().isoformat(timespec="milliseconds"),
-            })
-        except Exception:  # noqa: BLE001
-            pass
-
     def reconcile(self) -> None:
+        self._alert_long_running()
         self._requeue_stale_pending()
         self._fail_stuck_pending()
         self._recover_overdue_running()
         self._handle_cancelling()
+
+    def _alert_long_running(self) -> None:
+        """RUNNING 超过阈值告警一次（ALERT_RUNNING_SECONDS>0 时生效，Redis 去重）。"""
+        threshold = self._settings.alert_running_seconds
+        if threshold <= 0 or self._notifier is None:
+            return
+        for execution in self._executions.running():
+            if not execution.started_at:
+                continue
+            elapsed = (datetime.now() - execution.started_at).total_seconds()
+            if elapsed < threshold:
+                continue
+            self._alert(
+                f"⏰ 任务长时间运行 已 {elapsed / 60:.0f} 分钟 "
+                f"task={execution.task_id} skill={execution.skill_code} "
+                f"租户={execution.tenant_id} timeout={execution.timeout_seconds}s "
+                f"（可在管理台强制终止，终止按已发生用量结算）",
+                dedup_key=f"{execution.task_id}:longrun")
+
+    def _alert(self, text: str, dedup_key: str | None = None) -> None:
+        """看门狗侧告警（与 orchestrator._alert 同语义）：去重 + no-op + 失败仅记日志。"""
+        if self._notifier is None or not getattr(self._notifier, "enabled", False):
+            return
+        try:
+            if dedup_key:
+                flag = f"task:alerted:{dedup_key}"
+                if self._kv.get(flag):
+                    return
+                self._kv.set(flag, "1", ttl_seconds=86400)
+            self._notifier.send_text(text)
+        except Exception:  # noqa: BLE001 - 告警不阻塞看门狗
+            logger.warning("watchdog alert failed: %s", dedup_key)
+
+    def _watchdog_event(self, execution, action: str, detail: dict) -> None:
+        """上报 WATCHDOG 干预事件 + 飞书告警（看门狗干预=成本/健康异常信号）。"""
+        if self._events is not None:
+            try:
+                from ..telemetry import current_trace_id
+
+                self._events.report({
+                    "taskId": execution.task_id,
+                    "tenantId": execution.tenant_id,
+                    "stage": "WATCHDOG",
+                    "status": "OK",
+                    "service": "worker",
+                    "durationMs": None,
+                    "detail": dict(detail, action=action),
+                    "traceId": current_trace_id(),
+                    "occurredAt": datetime.now().isoformat(timespec="milliseconds"),
+                })
+            except Exception:  # noqa: BLE001
+                pass
+        if self._notifier is not None and action in ("FAIL_STUCK", "ROLLBACK", "KILL"):
+            try:
+                self._notifier.send_text(
+                    f"🛑 看门狗干预 [{action}] task={execution.task_id} "
+                    f"skill={execution.skill_code} 租户={execution.tenant_id}")
+            except Exception:  # noqa: BLE001 - 告警不阻塞看门狗
+                pass
 
     # ------------------------------------------------------------------
     # PENDING 段

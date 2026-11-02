@@ -132,11 +132,44 @@ public class ExecutionQueryService {
         }
     }
 
+    /**
+     * 管理台强制终止（全平台，无租户过滤）：RUNNING/CANCELLING → CANCELLING 并写
+     * Redis 加速标志（worker watch 循环轮到即杀沙箱，无需等 DB 轮询窗口）；
+     * PENDING → 直接取消退款；终态幂等返回。结算/退款复用既有取消链路（按已发生用量）。
+     */
+    public CancelResult forceCancelForAdmin(String taskId) {
+        Execution execution = executionMapper.selectOne(new LambdaQueryWrapper<Execution>()
+                .eq(Execution::getTaskId, taskId).last("LIMIT 1"));
+        if (execution == null) {
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "任务不存在: " + taskId);
+        }
+        switch (execution.getStatus()) {
+            case Execution.STATUS_PENDING -> {
+                CancelResult result = cancelPending(execution, null);
+                kv.set("task:force-cancel:" + taskId, "1", Duration.ofHours(1));
+                return result;
+            }
+            case Execution.STATUS_RUNNING, Execution.STATUS_CANCELLING -> {
+                executionMapper.markCancelling(taskId);
+                kv.set("task:force-cancel:" + taskId, "1", Duration.ofHours(1));
+                return new CancelResult(taskId, Execution.STATUS_CANCELLING, true);
+            }
+            default -> {
+                // 已终态：幂等返回（结算/退款已随首次取消完成）
+                return new CancelResult(taskId, execution.getStatus(), false);
+            }
+        }
+    }
+
+    /** caller 为 null（admin 强制终止路径）时竞态重入走 admin 语义 */
     private CancelResult cancelPending(Execution execution, CallerContext caller) {
         int updated = executionMapper.cancelPending(execution.getTaskId());
         if (updated == 0) {
             // 竞态：刚被 worker 接手 → 按最新状态重走分支
-            return cancel(caller, execution.getTaskId());
+            if (caller != null) {
+                return cancel(caller, execution.getTaskId());
+            }
+            return forceCancelForAdmin(execution.getTaskId());
         }
         releaseHold(execution);
         return new CancelResult(execution.getTaskId(), Execution.STATUS_CANCELLED, true);

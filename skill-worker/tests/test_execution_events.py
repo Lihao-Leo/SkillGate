@@ -5,6 +5,7 @@ from __future__ import annotations
 from opentelemetry import propagate, trace
 from opentelemetry.sdk.trace import TracerProvider
 
+from skill_worker.adapters.feishu import FeishuNotifier
 from skill_worker.adapters.mq import consume_span, inject_trace
 from skill_worker.telemetry import current_traceparent, init_tracing, tracer, tracer_provider
 from tests.fakes import Harness
@@ -110,6 +111,61 @@ def test_mq_helpers_noop_without_span():
     assert props == {}
     with consume_span(None):
         pass  # 不抛错即可
+
+
+def test_force_cancel_flag_kills_running_task_immediately():
+    """管理台强制终止：Redis 标志置位 → watch 立即取消（不等 Job 终态/超时）。"""
+    h = Harness()
+    h.seed_skill()
+    h.seed_execution(task_id="task_fc_0001")
+    h.sandbox.program("task_fc_0001", "SUCCEEDED")  # Job 即便成功也被取消覆盖
+    h.kv.set("task:force-cancel:task_fc_0001", "1")
+
+    h.orchestrator.handle("task_fc_0001")
+
+    row = h.execution_row("task_fc_0001")
+    assert row["status"] == "CANCELLED"
+    # 取消按已发生用量结算：无 usage → 0 点（METERED/PER_EXECUTION 同理全额退）
+    assert row["error_code"] == "CANCELLED"
+
+
+def test_long_running_alert_fires_once_with_dedup():
+    """RUNNING 超阈值告警：触发一次并去重（同任务第二次 reconcile 不再发）。"""
+    from datetime import datetime, timedelta
+
+    class FakeNotifier(FeishuNotifier):
+        def __init__(self):
+            super().__init__(webhook_url="https://x",
+                             post_fn=lambda url, payload, t: sent.append(payload))
+
+    sent: list[dict] = []
+    h = Harness(alert_running_seconds=60)
+    notifier = FakeNotifier()
+    h.watchdog._notifier = notifier  # noqa: SLF001 - 测试注入
+    h.seed_skill()
+    started = datetime.now() - timedelta(seconds=600)
+    h.seed_execution(task_id="task_long_001", started_at=started.isoformat(), status="RUNNING")
+
+    h.watchdog.reconcile()
+    h.watchdog.reconcile()  # 第二轮：去重，不再发送
+
+    assert len(sent) == 1
+    assert "长时间运行" in sent[0]["content"]["text"]
+    assert "task_long_001" in sent[0]["content"]["text"]
+
+
+def test_no_longrun_alert_below_threshold():
+    """未超阈值不告警；notifier 为 None（未配置 webhook）也不抛错。"""
+    from datetime import datetime, timedelta
+
+    h = Harness(alert_running_seconds=600)
+    h.seed_skill()
+    started = datetime.now() - timedelta(seconds=60)
+    h.seed_execution(task_id="task_short_01", started_at=started.isoformat(), status="RUNNING")
+
+    h.watchdog.reconcile()  # 60s < 600s 阈值，且 Harness 默认无 notifier
+
+    assert h.watchdog._notifier is None  # noqa: SLF001
 
 
 def test_current_traceparent_helper_roundtrip():

@@ -154,10 +154,12 @@ public class AdminController {
             @RequestParam(required = false) String skillCode,
             @RequestParam(required = false) String tenantId,
             @RequestParam(name = "onlyFailed", defaultValue = "false") boolean onlyFailed,
+            @RequestParam(required = false) String sortBy,
             @RequestParam(defaultValue = "1") int pageNo,
             @RequestParam(defaultValue = "20") int pageSize) {
         return ApiResponse.ok(adminOpsService.listExecutions(
                 Math.min(Math.max(hours, 1), 720), status, skillCode, tenantId, onlyFailed,
+                sortBy,
                 Math.min(Math.max(pageNo, 1), 1000), Math.min(Math.max(pageSize, 1), 100)));
     }
 
@@ -166,6 +168,13 @@ public class AdminController {
     public ApiResponse<com.skill.platform.gateway.service.ExecuteDtos.ExecutionView> adminExecution(
             @PathVariable String taskId) {
         return ApiResponse.ok(executionQueryService.getForAdmin(taskId));
+    }
+
+    /** 管理台强制终止（RUNNING/PENDING → 终止并按已发生用量结算/退款） */
+    @PostMapping("/executions/{taskId}/force-cancel")
+    public ApiResponse<com.skill.platform.gateway.service.ExecuteDtos.CancelResult> forceCancel(
+            @PathVariable String taskId) {
+        return ApiResponse.ok(executionQueryService.forceCancelForAdmin(taskId));
     }
 
     /** 受理入参 JSON（后管排查用）：instructions/materials/context 全量原文 */

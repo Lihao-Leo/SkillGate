@@ -1,7 +1,8 @@
-# ---- 凭证与环境（永不入库） ----
+# ---- 凭证与环境（永不入库；.env.example 模板除外） ----
 .env
 *.local.env
 .env.*
+!.env.example
 
 # ---- Python ----
 .venv/

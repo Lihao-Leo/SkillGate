@@ -117,6 +117,13 @@ class Settings:
     # gateway internal（执行事件上报通道，技术方案 v2.0 §1.4）
     gateway_base_url: str = os.environ.get("GATEWAY_BASE_URL", "http://127.0.0.1:8888")
 
+    # 飞书群告警（可选：FEISHU_WEBHOOK_URL 未配置即 no-op；SECRET 为机器人加签密钥）
+    feishu_webhook_url: str = os.environ.get("FEISHU_WEBHOOK_URL", "")
+    feishu_secret: str = os.environ.get("FEISHU_SECRET", "")
+    # RUNNING 超过该秒数告警一次（0=关闭）；token 超限告警（0=关闭）
+    alert_running_seconds: int = _int("ALERT_RUNNING_SECONDS", 600)
+    alert_tokens: int = _int("ALERT_TOKENS", 0)
+
     # 回调（§5.5）
     callback_timeout_seconds: float = 10.0
     callback_max_attempts: int = 3

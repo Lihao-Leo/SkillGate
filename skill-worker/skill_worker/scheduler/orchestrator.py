@@ -76,7 +76,7 @@ class Orchestrator:
     def __init__(self, executions: ExecutionRepository, artifacts: ArtifactRepository,
                  skills: SkillRepository, sandbox: SandboxPort, oss: OssPort, kv: KvPort,
                  mq: MqPort, billing: BillingPort, settings: Settings,
-                 now_fn=time.time, events=None):
+                 now_fn=time.time, events=None, notifier=None):
         self._executions = executions
         self._artifacts = artifacts
         self._skills = skills
@@ -87,6 +87,7 @@ class Orchestrator:
         self._settings = settings
         self._now = now_fn
         self._events = events
+        self._notifier = notifier
         self.settle_flow = SettleFlow(billing, mq, settings)
 
     # ------------------------------------------------------------------
@@ -112,6 +113,20 @@ class Orchestrator:
             })
         except Exception:  # noqa: BLE001 - 观测不阻塞执行主链路
             logger.warning("event report failed: task=%s stage=%s", execution.task_id, stage)
+
+    def _alert(self, text: str, dedup_key: str | None = None) -> None:
+        """飞书群告警（可选）；dedup_key 命中已告警记录则跳过（防轰炸）。"""
+        if self._notifier is None or not getattr(self._notifier, "enabled", False):
+            return
+        try:
+            if dedup_key:
+                flag = f"task:alerted:{dedup_key}"
+                if self._kv.get(flag):
+                    return
+                self._kv.set(flag, "1", ttl_seconds=86400)
+            self._notifier.send_text(text)
+        except Exception:  # noqa: BLE001 - 告警不阻塞执行主链路
+            logger.warning("feishu alert failed: %s", dedup_key)
 
     # ------------------------------------------------------------------
     # 消费入口（skill-execute）
@@ -182,7 +197,14 @@ class Orchestrator:
                     (time.time() - collect_start) * 1000,
                     {"file_count": len(files),
                      "error_code": None if result.ok else result.error_code})
-        self._finish(execution, result, files, self._flush_usage(execution.task_id))
+        usage = self._flush_usage(execution.task_id)
+        # token 超限告警（可选，ALERT_TOKENS>0 时生效，Redis 去重）
+        if self._settings.alert_tokens > 0 and usage.tokens > self._settings.alert_tokens:
+            self._alert(
+                f"⚠️ 任务 token 超限 task={execution.task_id} skill={execution.skill_code} "
+                f"tokens={usage.tokens} 阈值={self._settings.alert_tokens}（可在管理台强制终止）",
+                dedup_key=f"{execution.task_id}:tokens")
+        self._finish(execution, result, files, usage)
 
     def _finish(self, execution: Execution, result: RunResult, files: list[ArtifactFile],
                 usage: Usage) -> None:
@@ -225,6 +247,13 @@ class Orchestrator:
         self._event(execution, "FINALIZE", "OK", duration_ms,
                     {"final_status": final_status,
                      "error_code": result.error_code})
+        # 失败告警（可选）：含失败码与扣点情况，便于群里直接感知成本异常
+        if final_status == "FAILED":
+            self._alert(
+                f"❌ 任务失败 task={execution.task_id} skill={execution.skill_code} "
+                f"err={result.error_code} 扣点={charged} tokens={usage.tokens} "
+                f"时长={duration_ms}ms\n{str(result.error_message or '')[:200]}",
+                dedup_key=f"{execution.task_id}:failed")
 
         if execution.callback_url:
             body = callback_body(execution, result, artifact_views, charged, settled, usage,
@@ -285,7 +314,11 @@ class Orchestrator:
 
     def _watch(self, job: str, execution: Execution,
                timeout_seconds: int) -> tuple[RunResult, bool]:
-        """轮询 Job 终态与 CANCELLING 标记；超时（含宽限）未终 → 交看门狗收殓。"""
+        """轮询 Job 终态与 CANCELLING 标记；超时（含宽限）未终 → 交看门狗收殓。
+
+        管理台强制终止：Redis 标志 task:force-cancel:{taskId} 置位时立即杀 Job
+        （比等 DB 轮询更快，且 worker 重启后标志仍在）。
+        """
         deadline = time.time() + timeout_seconds + 60
         while time.time() < deadline:
             # 技能上报进度（Redis）→ 落库（gateway 查询展示）
@@ -295,6 +328,10 @@ class Orchestrator:
                     self._executions.update_progress(execution.task_id, int(progress))
                 except (TypeError, ValueError):
                     pass
+            if self._kv.get(f"task:force-cancel:{execution.task_id}"):
+                self._event(execution, "WATCHDOG", "OK", 0,
+                            {"action": "FORCE_CANCEL", "reason": "admin force-cancel flag"})
+                return RunResult.cancelled(), True
             status = self._sandbox.job_status(job, timeout_seconds)
             if status == JOB_SUCCEEDED:
                 return RunResult.success(), False

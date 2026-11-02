@@ -67,14 +67,20 @@ public class AdminOpsService {
         }
     }
 
-    /** 最近任务列表（全平台，轻量行）——後管执行监控任务列表；status/skillCode/tenantId/onlyFailed 筛选 */
+    /** 最近任务列表（全平台，轻量行）——後管执行监控任务列表；筛选 + 耗时/token 排序 */
     public com.baomidou.mybatisplus.extension.plugins.pagination.Page<Map<String, Object>> listExecutions(
             int hours, String status, String skillCode, String tenantId, boolean onlyFailed,
-            int pageNo, int pageSize) {
+            String sortBy, int pageNo, int pageSize) {
         var since = java.time.LocalDateTime.now().minusHours(Math.max(hours, 1));
         // 条件布尔不短路实参求值：先归一化，避免 null.strip() NPE
         String skill = skillCode == null ? "" : skillCode.strip();
         String tenant = tenantId == null ? "" : tenantId.strip();
+        // 排序白名单（防注入）：耗时/模型 token 降序支持「最耗时/最贵任务」排序诉求
+        String sortKey = sortBy == null ? "" : sortBy.strip().toLowerCase();
+        com.baomidou.mybatisplus.core.toolkit.support.SFunction<Execution, ?> sortColumn =
+                "duration".equals(sortKey) ? Execution::getDurationMs
+                : "tokens".equals(sortKey) ? Execution::getTokensUsed
+                : Execution::getId;
         var page = executionMapper.selectPage(
                 new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(
                         Math.max(pageNo, 1), Math.min(Math.max(pageSize, 1), 100)),
@@ -85,6 +91,7 @@ public class AdminOpsService {
                                 Execution::getStatus, status)
                         .like(!skill.isEmpty(), Execution::getSkillCode, skill)
                         .eq(!tenant.isEmpty(), Execution::getTenantId, tenant)
+                        .orderByDesc(sortColumn)
                         .orderByDesc(Execution::getId));
         var rows = page.getRecords().stream().map(e -> {
             Map<String, Object> row = new LinkedHashMap<>();
@@ -98,6 +105,8 @@ public class AdminOpsService {
             row.put("holdId", e.getHoldId());
             row.put("pricingSnapshot", e.getPricingSnapshot());
             row.put("durationMs", e.getDurationMs());
+            row.put("tokensUsed", e.getTokensUsed());
+            row.put("modelCalls", e.getModelCalls());
             row.put("callbackStatus", e.getCallbackStatus());
             row.put("callbackUrl", e.getCallbackUrl());
             row.put("createdAt", e.getCreatedAt() == null ? null : e.getCreatedAt().toString());
