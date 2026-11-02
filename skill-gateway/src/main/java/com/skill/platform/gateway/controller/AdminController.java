@@ -36,6 +36,7 @@ public class AdminController {
     private final com.skill.platform.gateway.service.MetricsService metricsService;
     private final com.skill.platform.gateway.service.AdminOpsService adminOpsService;
     private final com.skill.platform.gateway.service.ExecutionQueryService executionQueryService;
+    private final com.skill.platform.gateway.service.AlertConfigService alertConfigService;
 
     // ------------------------------------------------------------------
     // 模型与能力（§10.1）
@@ -122,6 +123,28 @@ public class AdminController {
     // ------------------------------------------------------------------
     // 系统配置（§10.1）：DB 覆盖 yml 默认值（quota.qps / quota.max-running / quota.daily-limit）
     // ------------------------------------------------------------------
+
+    // ------------------------------------------------------------------
+    // 告警配置（统一维护入口）：飞书 webhook / 阈值读写 + 连通性测试
+    // ------------------------------------------------------------------
+
+    @GetMapping("/alert-config")
+    public ApiResponse<com.skill.platform.gateway.service.AlertConfigService.AlertConfig> alertConfig() {
+        return ApiResponse.ok(alertConfigService.get());
+    }
+
+    @PutMapping("/alert-config")
+    public ApiResponse<com.skill.platform.gateway.service.AlertConfigService.AlertConfig> saveAlertConfig(
+            @RequestBody com.skill.platform.gateway.service.AlertConfigService.AlertConfig config) {
+        alertConfigService.save(config);
+        return ApiResponse.ok(alertConfigService.get());
+    }
+
+    /** 发送测试消息到当前已保存的 webhook（服务端代发，运营保存后立即可验证连通性） */
+    @PostMapping("/alert-config/test")
+    public ApiResponse<Map<String, Object>> testAlertConfig() {
+        return ApiResponse.ok(alertConfigService.sendTest());
+    }
 
     @GetMapping("/sys-config")
     public ApiResponse<Map<String, String>> sysConfig() {

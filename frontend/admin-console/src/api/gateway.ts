@@ -111,8 +111,7 @@ export interface ExecutionView {
 }
 
 /** 执行事件链单条事件（技术方案 v2.0 §1.6，detail 已解析为对象） */
-export interface ExecutionEventView {
-  taskId: string
+export interface ExecutionEventView {  taskId: string
   seq: number
   stage: string
   status: string
@@ -192,6 +191,14 @@ export interface KbDocumentView {
   chunkCount: number
   status: number
   createdAt: string | null
+}
+
+/** 飞书告警配置（统一维护：sys_config 四键） */
+export interface AlertConfigView {
+  webhookUrl: string
+  secret: string
+  runningSeconds: number
+  tokensThreshold: number
 }
 
 export interface MetricsOverview {
@@ -335,6 +342,15 @@ export const gatewayApi = (() => {
       client.adminJson<Record<string, string>>('GET', '/api/v1/admin/sys-config'),
     adminUpdateSysConfig: (items: Record<string, string>) =>
       client.adminJson<Record<string, string>>('PUT', '/api/v1/admin/sys-config', items),
+
+    adminAlertConfig: () =>
+      client.adminJson<AlertConfigView>('GET', '/api/v1/admin/alert-config'),
+    adminSaveAlertConfig: (config: { webhookUrl: string; secret: string;
+      runningSeconds: number; tokensThreshold: number }) =>
+      client.adminJson<AlertConfigView>('PUT', '/api/v1/admin/alert-config', config),
+    adminTestAlertConfig: () =>
+      client.adminJson<{ ok: boolean; message: string; response?: string }>(
+        'POST', '/api/v1/admin/alert-config/test'),
 
     adminMetricsDashboard: (hours: number) =>
       client.adminJson<any>('GET', `/api/v1/admin/metrics/dashboard?hours=${hours}`),
