@@ -91,7 +91,8 @@ class Watchdog:
                 })
             except Exception:  # noqa: BLE001
                 pass
-        if self._notifier is not None and action in ("FAIL_STUCK", "ROLLBACK", "KILL"):
+        # 仅对成本/健康异常类干预告警；REQUEUE 属例行重投不告警
+        if self._notifier is not None and action == "FAIL_STUCK":
             try:
                 self._notifier.send_text(
                     f"🛑 看门狗干预 [{action}] task={execution.task_id} "
