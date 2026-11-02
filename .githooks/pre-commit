@@ -1,0 +1,41 @@
+#!/bin/sh
+# pre-commit 安全网：拦截疑似云凭证明文入库。
+# 激活：git config core.hooksPath .githooks
+# 已知泄露密钥黑名单：.githooks/deny-local.txt（本地维护，不入库）
+# 误报确认无敏感信息可 git commit --no-verify 强行提交；根治建议：凭证一律环境变量注入。
+
+DIFF=$(git diff --cached --unified=0)
+FAIL=0
+
+# 1. 腾讯云 SecretId 特征（AKID 前缀 + 18 位以上）
+if echo "$DIFF" | grep -qE "AKID[A-Za-z0-9]{18,}"; then
+  echo "✋ 提交被拦截：检测到疑似腾讯云 SecretId（AKID…）明文。"
+  echo "   请改为环境变量注入（\${COS_ACCESS_KEY:} 空占位），并到云控制台轮换该密钥。"
+  FAIL=1
+fi
+
+# 2. 本地黑名单中的已知泄露密钥（逐行匹配）
+DENY_FILE="$(dirname "$0")/deny-local.txt"
+if [ -f "$DENY_FILE" ]; then
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    if echo "$DIFF" | grep -qF "$line"; then
+      echo "✋ 提交被拦截：检测到黑名单中的已知泄露密钥（请先到云控制台轮换）。"
+      FAIL=1
+      break
+    fi
+  done < "$DENY_FILE"
+fi
+
+# 3. 内部 COS 桶名（含 APPID 数字后缀）
+if echo "$DIFF" | grep -qE "[a-z0-9-]+-oss-[0-9]{13}"; then
+  echo "✋ 提交被拦截：检测到内部 COS 桶名（含 APPID 后缀）。"
+  FAIL=1
+fi
+
+if [ "$FAIL" -eq 1 ]; then
+  echo "   确认无敏感信息仍要提交：git commit --no-verify"
+  exit 1
+fi
+
+exit 0

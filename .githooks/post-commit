@@ -1,0 +1,7 @@
+#!/bin/sh
+# post-commit 链：转发到用户全局钩子（core.hooksPath 覆盖后保留既有行为）。
+GLOBAL_PRE="/Users/lylb/.githooks/post-commit"
+if [ -x "$GLOBAL_PRE" ]; then
+  "$GLOBAL_PRE" "$@"
+fi
+exit 0

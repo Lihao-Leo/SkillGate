@@ -103,6 +103,11 @@ skill-platform/
 - 所有密钥（对象存储、数据库、支付渠道、签名密钥）一律经环境变量注入，仓库仅保留 `change-me` 占位符与 `.env.example` 模板
 - 请勿将真实凭证提交进仓库；建议启用 secret scanning（GitHub 自带 push protection / gitleaks）
 - 如果历史版本曾泄露过密钥，请**立即在云厂商控制台轮换**，仅从代码中删除是不够的
+- **本地 pre-commit 安全网**（推荐开启）：拦截疑似云凭证明文（腾讯云 SecretId / 内部桶名）入库
+
+  ```bash
+  git config core.hooksPath .githooks   # 激活仓库钩子（已知泄露密钥黑名单 .githooks/deny-local.txt 本地维护，不入库）
+  ```
 
 ## License
 
