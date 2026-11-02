@@ -32,6 +32,13 @@ class FeishuNotifier:
     def enabled(self) -> bool:
         return bool(self._url)
 
+    def configure(self, webhook_url: str, secret: str) -> None:
+        """运行时更新目标机器人（统一配置中心 sys_config 热下发用）；空值不覆盖。"""
+        if webhook_url:
+            self._url = webhook_url.strip()
+        if secret:
+            self._secret = secret.strip()
+
     def send_text(self, text: str) -> bool:
         """发送文本消息；未启用/发送失败返回 False（仅记日志，不抛出）。"""
         if not self.enabled:

@@ -14,6 +14,7 @@ from ..adapters.db import PyMySqlDatabase
 from ..adapters.events import EventReporter
 from ..adapters.feishu import FeishuNotifier
 from ..adapters.k8s import K8sSandbox, LocalSubprocessSandbox
+from ..adapters.runtime_config import AlertConfigClient
 from ..adapters.kv import RedisKv
 from ..adapters.mq import RocketMqAdapter
 from ..adapters.oss import S3Oss
@@ -50,15 +51,18 @@ def build(settings: Settings) -> tuple[Orchestrator, Watchdog, CallbackWorker]:
     mq = RocketMqAdapter(settings.mq_proxy_endpoint)
     # 执行事件上报（技术方案 v2.0 §1.4）：缓冲批量 POST gateway internal 端点，观测不阻塞
     events = EventReporter(settings.gateway_base_url, settings.billing_internal_token)
-    # 飞书群告警（可选）：长跑/失败/看门狗干预/token 超限，未配置 webhook 即 no-op
+    # 飞书群告警（可选）：长跑/失败/看门狗干预/token 超限，未配置 webhook 即 no-op；
+    # 统一配置 = 管理后台系统配置页 sys_config（alert.* 键），AlertConfigClient 60s 拉取热生效
     notifier = FeishuNotifier(settings.feishu_webhook_url, settings.feishu_secret)
+    alert_config = AlertConfigClient(settings.gateway_base_url, settings.billing_internal_token,
+                                     settings)
 
     executions = ExecutionRepository(db)
     orchestrator = Orchestrator(
         executions, ArtifactRepository(db), SkillRepository(db), sandbox, oss, kv, mq,
-        billing, settings, events=events, notifier=notifier)
+        billing, settings, events=events, notifier=notifier, alert_config=alert_config)
     watchdog = Watchdog(orchestrator, sandbox, kv, mq, settings, events=events,
-                        notifier=notifier)
+                        notifier=notifier, alert_config=alert_config)
     callback_worker = CallbackWorker(
         UrllibHttpPort(), mq, executions, AppKeyRepository(db),
         settings.crypto_key, settings.callback_timeout_seconds,

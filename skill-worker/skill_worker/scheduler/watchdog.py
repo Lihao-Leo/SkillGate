@@ -23,7 +23,7 @@ MISSING_STREAK_KEY = "watchdog:missing:{task_id}"
 
 class Watchdog:
     def __init__(self, orchestrator: Orchestrator, sandbox: SandboxPort, kv: KvPort,
-                 mq: MqPort, settings: Settings, events=None, notifier=None):
+                 mq: MqPort, settings: Settings, events=None, notifier=None, alert_config=None):
         self._orchestrator = orchestrator
         self._sandbox = sandbox
         self._kv = kv
@@ -31,6 +31,7 @@ class Watchdog:
         self._settings = settings
         self._events = events
         self._notifier = notifier
+        self._alert_config = alert_config
         self._executions = orchestrator._executions  # noqa: SLF001 - 同模块协作
 
     def reconcile(self) -> None:
@@ -41,8 +42,9 @@ class Watchdog:
         self._handle_cancelling()
 
     def _alert_long_running(self) -> None:
-        """RUNNING 超过阈值告警一次（ALERT_RUNNING_SECONDS>0 时生效，Redis 去重）。"""
-        threshold = self._settings.alert_running_seconds
+        """RUNNING 超过阈值告警一次（统一配置 alert.running-seconds>0 时生效，Redis 去重）。"""
+        threshold = (self._alert_config.running_seconds()
+                     if self._alert_config is not None else self._settings.alert_running_seconds)
         if threshold <= 0 or self._notifier is None:
             return
         for execution in self._executions.running():
@@ -59,7 +61,12 @@ class Watchdog:
                 dedup_key=f"{execution.task_id}:longrun")
 
     def _alert(self, text: str, dedup_key: str | None = None) -> None:
-        """看门狗侧告警（与 orchestrator._alert 同语义）：去重 + no-op + 失败仅记日志。"""
+        """看门狗侧告警（与 orchestrator._alert 同语义）：统一配置热下发 + 去重 + no-op。"""
+        if self._alert_config is not None and self._notifier is not None:
+            try:
+                self._alert_config.refresh_into(self._notifier)
+            except Exception:  # noqa: BLE001
+                logger.warning("alert config refresh failed", exc_info=True)
         if self._notifier is None or not getattr(self._notifier, "enabled", False):
             return
         try:

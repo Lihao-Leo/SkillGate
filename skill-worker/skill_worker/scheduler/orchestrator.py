@@ -76,7 +76,7 @@ class Orchestrator:
     def __init__(self, executions: ExecutionRepository, artifacts: ArtifactRepository,
                  skills: SkillRepository, sandbox: SandboxPort, oss: OssPort, kv: KvPort,
                  mq: MqPort, billing: BillingPort, settings: Settings,
-                 now_fn=time.time, events=None, notifier=None):
+                 now_fn=time.time, events=None, notifier=None, alert_config=None):
         self._executions = executions
         self._artifacts = artifacts
         self._skills = skills
@@ -88,6 +88,7 @@ class Orchestrator:
         self._now = now_fn
         self._events = events
         self._notifier = notifier
+        self._alert_config = alert_config
         self.settle_flow = SettleFlow(billing, mq, settings)
 
     # ------------------------------------------------------------------
@@ -115,7 +116,9 @@ class Orchestrator:
             logger.warning("event report failed: task=%s stage=%s", execution.task_id, stage)
 
     def _alert(self, text: str, dedup_key: str | None = None) -> None:
-        """飞书群告警（可选）；dedup_key 命中已告警记录则跳过（防轰炸）。"""
+        """飞书群告警（可选）；统一配置来源 = sys_config（client 热下发）→ env 兜底；
+        dedup_key 命中已告警记录则跳过（防轰炸）。"""
+        self._refresh_alert_config()
         if self._notifier is None or not getattr(self._notifier, "enabled", False):
             return
         try:
@@ -127,6 +130,15 @@ class Orchestrator:
             self._notifier.send_text(text)
         except Exception:  # noqa: BLE001 - 告警不阻塞执行主链路
             logger.warning("feishu alert failed: %s", dedup_key)
+
+    def _refresh_alert_config(self) -> None:
+        """统一配置热生效：sys_config（管理后台系统配置页）→ 60s 缓存拉取 → env 兜底。"""
+        if self._alert_config is None or self._notifier is None:
+            return
+        try:
+            self._alert_config.refresh_into(self._notifier)
+        except Exception:  # noqa: BLE001
+            logger.warning("alert config refresh failed", exc_info=True)
 
     # ------------------------------------------------------------------
     # 消费入口（skill-execute）
@@ -198,11 +210,13 @@ class Orchestrator:
                     {"file_count": len(files),
                      "error_code": None if result.ok else result.error_code})
         usage = self._flush_usage(execution.task_id)
-        # token 超限告警（可选，ALERT_TOKENS>0 时生效，Redis 去重）
-        if self._settings.alert_tokens > 0 and usage.tokens > self._settings.alert_tokens:
+        # token 超限告警（统一配置 alert.tokens>0 时生效，Redis 去重）
+        threshold = (self._alert_config.tokens_threshold()
+                     if self._alert_config is not None else self._settings.alert_tokens)
+        if threshold > 0 and usage.tokens > threshold:
             self._alert(
                 f"⚠️ 任务 token 超限 task={execution.task_id} skill={execution.skill_code} "
-                f"tokens={usage.tokens} 阈值={self._settings.alert_tokens}（可在管理台强制终止）",
+                f"tokens={usage.tokens} 阈值={threshold}（可在管理台强制终止）",
                 dedup_key=f"{execution.task_id}:tokens")
         self._finish(execution, result, files, usage)
 
