@@ -8,6 +8,7 @@
 - **Skill 纯黑盒 + 沙箱隔离**：每任务独立 K8s Job（非 root / 只读根文件系统 / 出口受控），支持 CODE（`main.py`）与 AGENT（`SKILL.md`）两种包类型
 - **计费前置**：预校验 → 冻结 → 按实际结算 → 失败即退，点数账户对账兜底闭环
 - **全链路可观测**：任务节点事件 100% 落库，时间线 / CI-CD 式流程图 / 监控大屏纯 MySQL 渲染，零部署组件（OTel 内置默认关）
+- **运行中治理**：卡住任务一键强制终止（按已发生用量结算 / 余款退还）；飞书群告警（长跑 / 失败 / token 超限），配置在后管热生效
 - **模型能力平台管**：内置 OpenAI 兼容模型网关（alias 路由 + 回退链），密钥永不下发到 Skill 包
 - **两层输入**：materials（素材）+ instructions（自然语言指令），无 Schema 校验
 
@@ -18,8 +19,10 @@
 | ![执行监控](docs/images/screenshots/admin-executions.png) | ![执行链路](docs/images/screenshots/admin-execution-drawer.png) |
 | **监控大屏（/wall 轮播流水线墙）** | **暗色模式** |
 | ![监控大屏](docs/images/screenshots/admin-wall.png) | ![暗色模式](docs/images/screenshots/admin-dark.png) |
-| Skill 管理（管理后台） | 点数充值（用户端） |
-| ![Skill 管理](docs/images/screenshots/admin-skills.png) | ![点数充值](docs/images/screenshots/portal-recharge.png) |
+| **告警配置（系统配置页）** | Skill 管理（管理后台） |
+| ![告警配置](docs/images/screenshots/admin-alert-config.png) | ![Skill 管理](docs/images/screenshots/admin-skills.png) |
+| 点数充值（用户端） | 登录 / 注册（用户端） |
+| ![点数充值](docs/images/screenshots/portal-recharge.png) | ![登录注册](docs/images/screenshots/portal-login.png) |
 
 > 更多时序图（上传审核 / 执行 / 计费 / 支付）见 [`docs/images/`](docs/images/)，完整技术方案见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
@@ -27,6 +30,7 @@
 - **Skill 纯黑盒 + 沙箱隔离**：每任务独立 K8s Job（非 root / 只读根文件系统 / 出口受控），支持 CODE（`main.py`）与 AGENT（`SKILL.md`）两种包类型
 - **计费前置**：预校验 → 冻结 → 按实际结算 → 失败即退，点数账户对账兜底闭环
 - **全链路可观测**：任务节点事件 100% 落库，时间线 / CI-CD 式流程图 / 监控大屏纯 MySQL 渲染，零部署组件（OTel 内置默认关）
+- **运行中治理**：卡住任务一键强制终止（按已发生用量结算 / 余款退还）；飞书群告警（长跑 / 失败 / token 超限），配置在后管热生效
 - **模型能力平台管**：内置 OpenAI 兼容模型网关（alias 路由 + 回退链），密钥永不下发到 Skill 包
 - **两层输入**：materials（素材）+ instructions（自然语言指令），无 Schema 校验
 
@@ -42,9 +46,9 @@ recharge-service（充值平台：订单 / 支付渠道 / C 端用户）──or
 |---|---|---|
 | [skill-gateway](skill-gateway/) | Java / Spring Boot | 统一接入网关：HMAC 鉴权、三级限流（QPS / 租户并发 / 日调用量）、计费预校验与冻结、调度入 MQ、执行查询/取消/重试、Skill 生命周期与市场、素材双通道、模型网关、FREE 埋点 |
 | [billing-service](billing-service/) | Java / Spring Boot | 点数账户（key 即账户）、冻结 / 结算 / 退款、不可变流水、FROZEN 超 24h 对账兜底；独立部署独立库 |
-| [skill-worker](skill-worker/) | Python | 消费 `skill-execute`，每任务编排为一个加固 K8s Job 沙箱；先落产物 → 再结算 → 最后置终态；看门狗故障自愈；回调 HMAC 签名 + 1/5/15min 退避重试 |
+| [skill-worker](skill-worker/) | Python | 消费 `skill-execute`，每任务编排为一个加固 K8s Job 沙箱；先落产物 → 再结算 → 最后置终态；看门狗故障自愈；回调 HMAC 签名 + 1/5/15min 退避重试；飞书群告警（长跑 / 失败 / token 超限） |
 | [recharge-service](recharge-service/) | Java / Spring Boot | 充值平台：订单状态机、支付渠道抽象（微信 Native / 支付宝骨架 / Mock）、C 端用户体系；独立部署独立库 |
-| [frontend/admin-console](frontend/admin-console/) | Vue 3 + Element Plus | 管理后台：执行监控（时间线 / CI-CD 流程图 / 大屏 / 暗色）、Skill 管理、AppKey 与账户、模型路由、KB、系统配置 |
+| [frontend/admin-console](frontend/admin-console/) | Vue 3 + Element Plus | 管理后台：执行监控（时间线 / CI-CD 流程图 / 大屏 / 暗色 / 强制终止）、Skill 管理、AppKey 与账户、模型路由、KB、系统配置（含飞书告警） |
 | [frontend/user-portal](frontend/user-portal/) | Vue 3 | 用户中心：充值、APIKey 管理、流水、任务查询 |
 
 ## 核心机制速览
@@ -58,7 +62,7 @@ recharge-service（充值平台：订单 / 支付渠道 / C 端用户）──or
 | 取消 | PENDING 直接 CANCELLED + 退款；RUNNING 置 CANCELLING 由 worker 杀 Job 收殓 |
 | 多租户 | OSS 前缀逻辑隔离 + 预签名（凭据不出平台）；MySQL 行级 tenant_id；Milvus collection 物理隔离 |
 | 执行链路观测 | 全任务节点事件落库 `execution_event`（受理五关→沙箱→结算→回调），后管时间线 / CI-CD 式流程图 / 监控大屏纯 MySQL 渲染；OTel 内置默认关，零部署组件 |
-| 运行中治理 | 管理台强制终止（Redis 加速标志立即杀沙箱，按已发生用量结算 / 余款退还）；飞书群告警（长跑 / 失败 / 看门狗干预 / token 超限，可选加签，未配置 no-op）；列表按时长 / tokens 排序 |
+| 运行中治理 | 管理台强制终止（Redis 加速标志立即杀沙箱，按已发生用量结算 / 余款退还）；飞书群告警（长跑 / 失败 / 看门狗干预 / token 超限，可选加签，未配置 no-op）；列表按时长 / tokens 排序。告警配置统一维护于系统配置页（sys_config），保存热生效无需重启 |
 
 ## 快速开始
 
