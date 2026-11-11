@@ -4,7 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "noEmit": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
@@ -12,5 +12,5 @@
     "types": ["vite/client", "node"],
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
-  "include": ["src/**/*.ts", "src/**/*.vue", "tests/**/*.ts", "vite.config.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "vite.config.ts"]
 }

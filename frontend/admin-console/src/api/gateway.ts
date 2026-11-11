@@ -3,8 +3,8 @@
  * 类型与服务端 DTO 对齐（SkillDtos / ExecuteDtos / BillingViews / AppKeyAdminService）。
  */
 import { createGatewayClient, buildQuery } from './client'
-import { useCredentialsStore } from '../stores/credentials'
-import { useAuthStore } from '../stores/auth'
+import { appKeyReady, clearCredentials, useCredentialsStore } from '../stores/credentials'
+import { clearSession, useAuthStore } from '../stores/auth'
 
 // ---- 后台登录与用户管理类型（对齐 AdminAuthDtos）----
 export interface LoginResult {
@@ -364,16 +364,16 @@ export interface RechargeResult {
 export const gatewayApi = (() => {
   const client = createGatewayClient({
     getCredentials: () => {
-      const store = useCredentialsStore()
-      return store.appKeyReady ? { appKey: store.appKey, secret: store.secret, adminToken: store.adminToken } : null
+      const store = useCredentialsStore.getState()
+      return appKeyReady(store) ? { appKey: store.appKey, secret: store.secret, adminToken: store.adminToken } : null
     },
     getAdminToken: () => {
-      const store = useCredentialsStore()
-      return store.adminReady ? store.adminToken : null
+      const store = useCredentialsStore.getState()
+      return store.adminToken ? store.adminToken : null
     },
-    getAuthToken: () => useAuthStore().session?.token || null,
+    getAuthToken: () => useAuthStore.getState().session?.token || null,
     onUnauthorized: () => {
-      useAuthStore().clear()
+      clearSession()
       window.location.assign('/login')
     },
   })

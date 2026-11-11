@@ -4,7 +4,7 @@
  */
 import { signedHeaders } from './hmac'
 import { useAuthStore } from '../stores/auth'
-import { useGatewayCredsStore } from '../stores/gwCreds'
+import { gwCredsReady, useGatewayCredsStore } from '../stores/gwCreds'
 
 export class ApiError extends Error {
   constructor(public readonly code: number, message: string) {
@@ -37,7 +37,7 @@ export interface FetchLike {
 /** 充值平台（JWT）请求 */
 async function rechargeFetch<T>(method: string, path: string, body?: unknown,
                                 fetchImpl: FetchLike = fetch): Promise<T> {
-  const auth = useAuthStore()
+  const auth = useAuthStore.getState()
   const response = await fetchImpl(path, {
     method,
     headers: {
@@ -52,8 +52,8 @@ async function rechargeFetch<T>(method: string, path: string, body?: unknown,
 /** 执行平台（用户 AppKey HMAC）请求 */
 async function gatewayFetch<T>(method: string, pathWithQuery: string, body?: unknown,
                                fetchImpl: FetchLike = fetch): Promise<T> {
-  const creds = useGatewayCredsStore()
-  if (!creds.ready) {
+  const creds = useGatewayCredsStore.getState()
+  if (!gwCredsReady(creds)) {
     throw new ApiError(40101, '未配置 AppKey/AppSecret，请先在「APIKey 管理」录入')
   }
   const bodyText = body === undefined ? '' : JSON.stringify(body)

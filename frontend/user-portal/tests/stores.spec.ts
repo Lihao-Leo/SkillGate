@@ -1,37 +1,31 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { createPinia, setActivePinia } from 'pinia'
-import { useAuthStore } from '../src/stores/auth'
-import { useGatewayCredsStore } from '../src/stores/gwCreds'
+import { loginSession, logoutSession, useAuthStore } from '../src/stores/auth'
+import { clearGwCreds, gwCredsReady, saveGwCreds, useGatewayCredsStore } from '../src/stores/gwCreds'
 
-beforeEach(() => {
-  localStorage.clear()
-  setActivePinia(createPinia())
-})
+describe('会话与凭证 store', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    logoutSession()
+    clearGwCreds()
+  })
 
-describe('auth store（JWT 会话）', () => {
-  it('login/logout 持久化', () => {
-    const auth = useAuthStore()
-    expect(auth.loggedIn).toBe(false)
-    auth.login('jwt-token', '138****8000')
-    expect(auth.loggedIn).toBe(true)
-    expect(localStorage.getItem('portal.token')).toBe('jwt-token')
-
-    auth.logout()
-    expect(auth.loggedIn).toBe(false)
+  it('auth login/logout 持久化', () => {
+    loginSession('jwt-9', '13800008000')
+    expect(useAuthStore.getState().token).toBe('jwt-9')
+    expect(useAuthStore.getState().identifier).toBe('13800008000')
+    expect(localStorage.getItem('portal.token')).toBe('jwt-9')
+    logoutSession()
+    expect(useAuthStore.getState().token).toBe('')
     expect(localStorage.getItem('portal.token')).toBeNull()
   })
-})
 
-describe('gatewayCreds store（执行平台凭证）', () => {
-  it('save/clear 与 ready 判定', () => {
-    const creds = useGatewayCredsStore()
-    expect(creds.ready).toBe(false)
-    creds.save('sk-user-1', 'sec')
-    expect(creds.ready).toBe(true)
-    expect(localStorage.getItem('portal.gw.secret')).toBe('sec')
-
-    creds.clear()
-    expect(creds.ready).toBe(false)
+  it('gwCreds save/clear 与 ready 派生', () => {
+    expect(gwCredsReady(useGatewayCredsStore.getState())).toBe(false)
+    saveGwCreds('sk-user-1', 'sec-1')
+    expect(gwCredsReady(useGatewayCredsStore.getState())).toBe(true)
+    expect(localStorage.getItem('portal.gw.appKey')).toBe('sk-user-1')
+    clearGwCreds()
+    expect(useGatewayCredsStore.getState().appKey).toBe('')
     expect(localStorage.getItem('portal.gw.appKey')).toBeNull()
   })
 })

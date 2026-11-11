@@ -48,8 +48,8 @@ recharge-service（充值平台：订单 / 支付渠道 / C 端用户）──or
 | [billing-service](billing-service/) | Java / Spring Boot | 点数账户（key 即账户）、冻结 / 结算 / 退款、不可变流水、FROZEN 超 24h 对账兜底；独立部署独立库 |
 | [skill-worker](skill-worker/) | Python | 消费 `skill-execute`，每任务编排为一个加固 K8s Job 沙箱；先落产物 → 再结算 → 最后置终态；看门狗故障自愈；回调 HMAC 签名 + 1/5/15min 退避重试；飞书群告警（长跑 / 失败 / token 超限） |
 | [recharge-service](recharge-service/) | Java / Spring Boot | 充值平台：订单状态机、支付渠道抽象（微信 Native / 支付宝骨架 / Mock）、C 端用户体系；独立部署独立库 |
-| [frontend/admin-console](frontend/admin-console/) | Vue 3 + Element Plus | 管理后台：执行监控（时间线 / CI-CD 流程图 / 大屏 / 暗色 / 强制终止）、Skill 管理、AppKey 与账户、模型路由、KB、系统配置（含飞书告警） |
-| [frontend/user-portal](frontend/user-portal/) | Vue 3 | 用户中心：充值、APIKey 管理、流水、任务查询 |
+| [frontend/admin-console](frontend/admin-console/) | React 18 + Ant Design 5 + ProComponents | 管理后台：执行监控（时间线 / CI-CD 流程图 / 大屏 / 暗色 / 强制终止）、Skill 管理、AppKey 与账户、模型路由、KB、系统配置（含飞书告警） |
+| [frontend/user-portal](frontend/user-portal/) | React 18 + Ant Design 5 | 用户中心：充值、APIKey 管理、流水、任务查询 |
 
 ## 核心机制速览
 
@@ -92,8 +92,8 @@ skill-platform/
 ├── skill-worker/         # 沙箱执行编排（Python）
 ├── recharge-service/     # 充值平台（Java，独立库）
 ├── frontend/
-│   ├── admin-console/    # 管理后台（Vue 3）
-│   └── user-portal/      # 用户中心（Vue 3）
+│   ├── admin-console/    # 管理后台（React 18 + AntD Pro）
+│   └── user-portal/      # 用户中心（React 18 + AntD 5）
 └── templates/
     └── agent-skill-bridge/   # SKILL.md 型技能零改造接入的标准桥
 ```

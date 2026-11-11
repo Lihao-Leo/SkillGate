@@ -34,3 +34,6 @@ ai-coding-output/
 .map/
 # ---- 本地安全网（钩子黑名单/个人覆盖，不入库） ----
 .githooks/deny-local.txt
+
+# worker 本地运行时产物
+skill-worker/.usage/

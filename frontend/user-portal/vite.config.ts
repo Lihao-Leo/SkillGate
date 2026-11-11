@@ -1,12 +1,12 @@
 import { defineConfig } from 'vitest/config'
-import vue from '@vitejs/plugin-vue'
+import react from '@vitejs/plugin-react'
 
 // dev 代理：/api/user → recharge-service（8082）；/api/v1 → gateway（8888）
 const rechargeOrigin = process.env.RECHARGE_ORIGIN ?? 'http://127.0.0.1:8082'
 const gatewayOrigin = process.env.GATEWAY_ORIGIN ?? 'http://127.0.0.1:8888'
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [react()],
   server: {
     port: 5174,
     proxy: {
@@ -16,7 +16,7 @@ export default defineConfig({
   },
   test: {
     environment: 'happy-dom',
-    include: ['tests/**/*.spec.ts'],
+    include: ['tests/**/*.spec.ts', 'tests/**/*.spec.tsx'],
     setupFiles: ['tests/setup.ts'],
   },
 })

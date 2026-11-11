@@ -36,7 +36,7 @@
 
 ## 3\. 系统分层架构
 
-> **服务定名（v6\.0）**：平台整体称 **Skill 执行平台（skill\-platform）**；四个后端服务为 **skill\-gateway**（Java，接入与管理）、**billing\-service**（Java，计费，独立部署）、**skill\-worker**（Python，沙箱执行编排）、**recharge\-service**（Java，充值平台：订单 / 支付渠道 / C 端用户，独立部署独立库，见 §10\.4）；两个前端应用为 **skill\-admin\-web**（管理后台：Vue 3 \+ Element Plus，PC，经 gateway 管理面 API）与 **recharge\-web**（充值用户端：Vue 3，PC Web 响应式，经 recharge\-service BFF）——前端均为静态部署（Nginx / CDN），与后端独立发布。K8s namespace：`skill-platform`；MQ Topic：`skill-execute` / `skill-settle` / `skill-callback-retry` / `skill-callback-dlq`；数据库：`skill_platform` / `skill_billing` / `recharge` 三库（充值平台独立库，§10.4）。
+> **服务定名（v6\.0）**：平台整体称 **Skill 执行平台（skill\-platform）**；四个后端服务为 **skill\-gateway**（Java，接入与管理）、**billing\-service**（Java，计费，独立部署）、**skill\-worker**（Python，沙箱执行编排）、**recharge\-service**（Java，充值平台：订单 / 支付渠道 / C 端用户，独立部署独立库，见 §10\.4）；两个前端应用为 **skill\-admin\-web**（管理后台：React 18 + Ant Design 5 + ProComponents，PC，经 gateway 管理面 API）与 **recharge\-web**（充值用户端：React 18，PC Web 响应式，经 recharge\-service BFF）——前端均为静态部署（Nginx / CDN），与后端独立发布。K8s namespace：`skill-platform`；MQ Topic：`skill-execute` / `skill-settle` / `skill-callback-retry` / `skill-callback-dlq`；数据库：`skill_platform` / `skill_billing` / `recharge` 三库（充值平台独立库，§10.4）。
 > 
 > **选型 RocketMQ**：延迟消息原生支持回调退避重试（1/5/15min 定时等级）、内置 DLQ（%DLQ%消费组）、事务消息可作受理侧 Outbox 兜底（V1 用 PENDING 看门狗替代，事务消息留作演进）；消费语义 at\-least\-once，全链路靠幂等键消化重复（接手条件更新 / hold 状态 / taskId）。
 > 

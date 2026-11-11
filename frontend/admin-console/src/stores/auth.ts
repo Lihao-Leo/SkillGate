@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia'
+import { create } from 'zustand'
 
 /**
  * 后台登录会话（V2.1）：JWT + 角色 + 权限点，localStorage 持久化（内部 PC）。
@@ -38,30 +38,21 @@ interface AuthState {
   session: AuthSession | null
 }
 
-export const useAuthStore = defineStore('auth', {
-  state: (): AuthState => ({ session: load() }),
-  getters: {
-    loggedIn: (s) => s.session !== null,
-    username: (s) => s.session?.username ?? '',
-    displayName: (s) => s.session?.displayName ?? '',
-    role: (s) => s.session?.role ?? '',
-    roleName: (s) => s.session?.roleName ?? '',
-    permissions: (s) => s.session?.permissions ?? [],
-    /** 权限判定：SUPER_ADMIN 通配；未登录一律 false */
-    hasPerm: (s) => (perm: string): boolean => {
-      if (!s.session) return false
-      if (s.session.role === 'SUPER_ADMIN') return true
-      return s.session.permissions.includes(perm)
-    },
-  },
-  actions: {
-    login(session: AuthSession) {
-      this.session = session
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(session))
-    },
-    clear() {
-      this.session = null
-      localStorage.removeItem(STORAGE_KEY)
-    },
-  },
-})
+export const useAuthStore = create<AuthState>(() => ({ session: load() }))
+
+/** 权限判定：SUPER_ADMIN 通配；未登录一律 false（router 守卫与菜单过滤共用纯函数）。 */
+export function hasPerm(session: AuthSession | null, perm: string): boolean {
+  if (!session) return false
+  if (session.role === 'SUPER_ADMIN') return true
+  return session.permissions.includes(perm)
+}
+
+export function saveSession(session: AuthSession) {
+  useAuthStore.setState({ session })
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(session))
+}
+
+export function clearSession() {
+  useAuthStore.setState({ session: null })
+  localStorage.removeItem(STORAGE_KEY)
+}

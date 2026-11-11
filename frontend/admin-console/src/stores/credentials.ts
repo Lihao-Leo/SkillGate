@@ -1,9 +1,9 @@
-import { defineStore } from 'pinia'
+import { create } from 'zustand'
 
 /**
- * 管理后台凭证（V1 网关无运营账号体系）：
+ * 管理后台凭证：
  * - AppKey + AppSecret：业务面（/api/v1/** HMAC 签名），运营持有本租户 key
- * - AdminToken：管理面（/api/v1/admin/** X-Admin-Token）
+ * - AdminToken：管理面 legacy 静态 token（V2.1 过渡兼容，JWT 为主通道）
  * 仅存 localStorage（内部 PC，浏览器本地）；退出即清。
  */
 export interface Credentials {
@@ -29,26 +29,30 @@ function load(): Credentials {
   }
 }
 
-export const useCredentialsStore = defineStore('credentials', {
-  state: (): Credentials => load(),
-  getters: {
-    /** 业务面（HMAC）可用 */
-    appKeyReady: (s) => s.appKey !== '' && s.secret !== '',
-    /** 管理面（admin token）可用 */
-    adminReady: (s) => s.adminToken !== '',
-  },
-  actions: {
-    save(creds: Credentials) {
-      this.appKey = creds.appKey
-      this.secret = creds.secret
-      this.adminToken = creds.adminToken
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(creds))
-    },
-    clear() {
-      this.appKey = ''
-      this.secret = ''
-      this.adminToken = ''
-      localStorage.removeItem(STORAGE_KEY)
-    },
-  },
-})
+/** 从 localStorage 重新读取（脏数据容错：解析失败回退空凭证；测试与调试用）。 */
+export function loadCredentials(): Credentials {
+  return load()
+}
+
+interface CredentialsState {
+  appKey: string
+  secret: string
+  adminToken: string
+}
+
+export const useCredentialsStore = create<CredentialsState>(() => load())
+
+/** 业务面（HMAC）可用 */
+export function appKeyReady(state: Pick<CredentialsState, 'appKey' | 'secret'>): boolean {
+  return state.appKey !== '' && state.secret !== ''
+}
+
+export function saveCredentials(creds: Credentials) {
+  useCredentialsStore.setState({ ...creds })
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(creds))
+}
+
+export function clearCredentials() {
+  useCredentialsStore.setState({ appKey: '', secret: '', adminToken: '' })
+  localStorage.removeItem(STORAGE_KEY)
+}

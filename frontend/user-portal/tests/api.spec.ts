@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createPinia, setActivePinia } from 'pinia'
+import { loginSession, logoutSession } from '../src/stores/auth'
 import { rechargeApi, gatewayUserApi, ApiError } from '../src/api'
-import { useAuthStore } from '../src/stores/auth'
-import { useGatewayCredsStore } from '../src/stores/gwCreds'
+import { clearGwCreds, saveGwCreds } from '../src/stores/gwCreds'
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status })
@@ -10,7 +9,8 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 beforeEach(() => {
   localStorage.clear()
-  setActivePinia(createPinia())
+  logoutSession()
+  clearGwCreds()
 })
 
 describe('rechargeApi（JWT）', () => {
@@ -25,7 +25,7 @@ describe('rechargeApi（JWT）', () => {
     expect(loginHeaders.Authorization).toBeUndefined()
 
     // 登录成功后（store 已写入）后续请求携带 token
-    useAuthStore().login('jwt-1', '138****8000')
+    loginSession('jwt-1', '138****8000')
     const fetch2 = vi.fn().mockResolvedValue(jsonResponse({ code: 0, message: 'ok', data: [] }))
     await rechargeApi.listKeys(fetch2 as unknown as typeof fetch)
     expect(fetch2.mock.calls[0][1]?.headers).toMatchObject({ Authorization: 'Bearer jwt-1' })
@@ -60,7 +60,7 @@ describe('gatewayUserApi（用户 AppKey HMAC）', () => {
   })
 
   it('配置凭证后 HMAC 签名请求任务查询', async () => {
-    useGatewayCredsStore().save('sk-user-1', 'sec-1')
+    saveGwCreds('sk-user-1', 'sec-1')
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({
       code: 0, message: 'ok',
       data: { taskId: 'task-9', status: 'SUCCEEDED', progress: 100 },

@@ -63,7 +63,7 @@ jobs:
           python -m pytest tests/ -q
 
   frontend:
-    name: frontend (Vue 3)
+    name: frontend (React 18)
     runs-on: ubuntu-latest
     strategy:
       matrix:
