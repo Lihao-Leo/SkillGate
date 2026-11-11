@@ -1,7 +1,6 @@
-import { createBrowserRouter, Navigate, useLocation } from 'react-router-dom'
+import { createBrowserRouter, Navigate } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { hasPerm, useAuthStore } from './stores/auth'
-import { appKeyReady, useCredentialsStore } from './stores/credentials'
 import AdminLayout from './layouts/AdminLayout'
 import LoginPage from './pages/Login'
 import ConnectPage from './pages/Connect'
@@ -34,15 +33,7 @@ function RequirePerm({ perm, children }: { perm: string; children: ReactNode }) 
   return children
 }
 
-/** 业务面凭证缺失 → /connect（仅 /account 使用）。 */
-function RequireAppKey({ children }: { children: ReactNode }) {
-  const appKey = useCredentialsStore((state) => state.appKey)
-  const secret = useCredentialsStore((state) => state.secret)
-  if (!appKeyReady({ appKey, secret })) {
-    return <Navigate to="/connect" replace />
-  }
-  return children
-}
+/** 业务面凭证检查已移入 AccountPage 页内引导（不再硬跳转，避免"点 A 进 B"的困惑）。 */
 
 /** 已登录访问 /login → /executions（对齐守卫第 2 条）；组件内自行处理。 */
 
@@ -83,11 +74,7 @@ export const router = createBrowserRouter([
       },
       {
         path: '/account',
-        element: (
-          <RequireAppKey>
-            <AccountPage />
-          </RequireAppKey>
-        ),
+        element: <AccountPage />,
       },
       {
         path: '/models',
@@ -145,7 +132,3 @@ export const router = createBrowserRouter([
   },
 ])
 
-/** 面包屑用（ProLayout 需要 location）。 */
-export function usePathname(): string {
-  return useLocation().pathname
-}

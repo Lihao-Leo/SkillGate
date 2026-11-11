@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import { App as AntdApp, Button, Card, Input, Space, Table, Tag } from 'antd'
+import { useNavigate } from 'react-router-dom'
+import { Alert, App as AntdApp, Button, Card, Input, Space, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { LockOutlined, WalletOutlined } from '@ant-design/icons'
 import { gatewayApi } from '../api/gateway'
 import type { BalanceView, TransactionPage, TransactionView } from '../api/gateway'
+import { appKeyReady, useCredentialsStore } from '../stores/credentials'
 
 const TYPE_TEXT: Record<string, string> = {
   HOLD: '冻结', SETTLE: '结算', RELEASE: '释放', RECHARGE: '充值', ADJUST: '调整',
@@ -19,12 +21,17 @@ function fmtDateTime(value: string | null | undefined): string {
 
 export default function AccountPage() {
   const { message } = AntdApp.useApp()
+  const navigate = useNavigate()
+  const appKey = useCredentialsStore((state) => state.appKey)
+  const secret = useCredentialsStore((state) => state.secret)
+  const credsReady = appKeyReady({ appKey, secret })
   const [balance, setBalance] = useState<BalanceView | null>(null)
   const [page, setPage] = useState<TransactionPage>({ total: 0, pageNo: 1, pageSize: 20, items: [] })
   const [query, setQuery] = useState({ taskId: '', pageNo: 1, pageSize: 20 })
   const [loading, setLoading] = useState(false)
 
   async function load(pageNo = query.pageNo, pageSize = query.pageSize, taskId = query.taskId) {
+    if (!credsReady) return
     setLoading(true)
     try {
       const [balanceView, txPage] = await Promise.all([
@@ -70,8 +77,18 @@ export default function AccountPage() {
           <h2>账户流水</h2>
           <p className="sub">当前 AppKey 的点数账户：可用 / 冻结与全部动账记录</p>
         </div>
-        <Button onClick={() => load()}>刷新</Button>
+        {credsReady && <Button onClick={() => load()}>刷新</Button>}
       </div>
+
+      {!credsReady && (
+        <Alert
+          type="info" showIcon style={{ marginBottom: 16 }}
+          message="尚未配置业务面凭证（AppKey / AppSecret）"
+          description="账户流水走业务面 HMAC 签名，需要先绑定运营凭证。到「业务凭证」页录入（或自助签发）后即可查看余额与动账记录。"
+          action={<Button size="small" type="primary"
+                          onClick={() => navigate('/connect')}>去配置凭证</Button>}
+        />
+      )}
 
       <div className="stat-grid">
         <div className="stat-card">
@@ -100,7 +117,7 @@ export default function AccountPage() {
                  value={query.taskId}
                  onChange={(e) => setQuery((prev) => ({ ...prev, taskId: e.target.value }))}
                  onPressEnter={() => load(1)} />
-          <Button onClick={() => load(1)}>筛选</Button>
+          <Button onClick={() => load(1)} disabled={!credsReady}>筛选</Button>
         </Space>
         <Table
           size="small"
