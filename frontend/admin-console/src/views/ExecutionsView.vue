@@ -5,6 +5,10 @@ import { Search } from '@element-plus/icons-vue'
 import { gatewayApi, type ExecutionEventView, type ExecutionView } from '../api/gateway'
 import ExecutionTimeline from '../components/ExecutionTimeline.vue'
 import StagePipeline from '../components/StagePipeline.vue'
+import ModelCallTable from '../components/ModelCallTable.vue'
+import JsonPreviewDialog from '../components/JsonPreviewDialog.vue'
+
+const previewRef = ref<InstanceType<typeof JsonPreviewDialog> | null>(null)
 
 const taskId = ref('')
 const execution = ref<ExecutionView | null>(null)
@@ -534,21 +538,34 @@ async function giveUpCallback(taskIdToGiveUp: string) {
       <ExecutionTimeline :events="events" />
 
       <template v-if="execution.artifacts?.length">
-        <h4 style="margin: 16px 0 8px">产物（预签名下载，24h 有效）</h4>
+        <h4 style="margin: 16px 0 8px">产物（结构化产物可在线预览；下载链接 24h 有效）</h4>
         <el-table :data="execution.artifacts" size="small" data-testid="artifacts-table">
           <el-table-column prop="artifactId" label="产物" width="220" class-name="mono" />
           <el-table-column prop="type" label="类型" width="100" />
           <el-table-column prop="sizeBytes" label="大小 (B)" width="100" />
-          <el-table-column label="下载">
+          <el-table-column label="查看 / 下载" width="170">
             <template #default="{ row }">
-              <a :href="row.url" target="_blank" rel="noopener">下载链接</a>
+              <el-button v-if="row.previewable" link type="primary" size="small"
+                         :data-testid="`preview-${row.artifactId}`"
+                         @click="previewRef?.open(execution.taskId, row)">预览</el-button>
+              <a :href="row.url" target="_blank" rel="noopener" style="margin-left: 8px">下载</a>
             </template>
           </el-table-column>
         </el-table>
       </template>
+
+      <!-- V2.1：逐次模型调用明细（token 细分与费率折算） -->
+      <div class="list-head" style="margin-top: 16px">
+        <b>模型调用明细</b>
+        <span class="sub">{{ execution.modelCalls ?? 0 }} 次 / {{ execution.tokensUsed ?? 0 }} tokens</span>
+      </div>
+      <ModelCallTable :task-id="execution.taskId" />
     </template>
     <div v-else v-loading="loading" style="min-height: 200px" />
   </el-drawer>
+
+  <!-- 产物在线预览（结构化 JSON/MD/HTML） -->
+  <JsonPreviewDialog ref="previewRef" />
 
   <!-- 入参 JSON 查看 -->
   <el-dialog v-model="inputVisible" title="受理入参（instructions / materials / context 原文）" width="640px">

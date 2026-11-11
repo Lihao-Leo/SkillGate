@@ -16,6 +16,8 @@ from ..adapters.feishu import FeishuNotifier
 from ..adapters.k8s import K8sSandbox, LocalSubprocessSandbox
 from ..adapters.runtime_config import AlertConfigClient
 from ..adapters.kv import RedisKv
+from ..adapters.alert_records import AlertRecordReporter
+from ..adapters.model_calls import ModelCallReporter
 from ..adapters.mq import RocketMqAdapter
 from ..adapters.oss import S3Oss
 from ..adapters.repositories import (AppKeyRepository, ArtifactRepository, ExecutionRepository,
@@ -51,6 +53,10 @@ def build(settings: Settings) -> tuple[Orchestrator, Watchdog, CallbackWorker]:
     mq = RocketMqAdapter(settings.mq_proxy_endpoint)
     # 执行事件上报（技术方案 v2.0 §1.4）：缓冲批量 POST gateway internal 端点，观测不阻塞
     events = EventReporter(settings.gateway_base_url, settings.billing_internal_token)
+    # V2.1：逐次模型调用明细 / 告警记录上报（同 events 语义，失败丢批不阻塞；
+    # gateway 未升级无端点时静默降级）
+    model_calls = ModelCallReporter(settings.gateway_base_url, settings.billing_internal_token)
+    alert_records = AlertRecordReporter(settings.gateway_base_url, settings.billing_internal_token)
     # 飞书群告警（可选）：长跑/失败/看门狗干预/token 超限，未配置 webhook 即 no-op；
     # 统一配置 = 管理后台系统配置页 sys_config（alert.* 键），AlertConfigClient 60s 拉取热生效
     notifier = FeishuNotifier(settings.feishu_webhook_url, settings.feishu_secret)
@@ -60,9 +66,11 @@ def build(settings: Settings) -> tuple[Orchestrator, Watchdog, CallbackWorker]:
     executions = ExecutionRepository(db)
     orchestrator = Orchestrator(
         executions, ArtifactRepository(db), SkillRepository(db), sandbox, oss, kv, mq,
-        billing, settings, events=events, notifier=notifier, alert_config=alert_config)
+        billing, settings, events=events, notifier=notifier, alert_config=alert_config,
+        model_call_reporter=model_calls, alert_record_reporter=alert_records)
     watchdog = Watchdog(orchestrator, sandbox, kv, mq, settings, events=events,
-                        notifier=notifier, alert_config=alert_config)
+                        notifier=notifier, alert_config=alert_config,
+                        alert_record_reporter=alert_records)
     callback_worker = CallbackWorker(
         UrllibHttpPort(), mq, executions, AppKeyRepository(db),
         settings.crypto_key, settings.callback_timeout_seconds,

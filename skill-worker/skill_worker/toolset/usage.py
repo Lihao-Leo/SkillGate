@@ -1,20 +1,64 @@
 """usage 上报（§4.5）：toolset 每次调用后增量上报 Redis task:usage:{taskId}（分类计数）。
 
 降级口径：Redis 故障/驱逐时接受少收（平台对账告警兜底），上报失败不阻断 Skill。
+
+V2.1 追加：record_model_call 把逐次调用明细追加写工作区 .usage/model_calls.jsonl
+（不经 Redis——K8s 沙箱未注入 REDIS_URL 时聚合会丢，per-call 明细走工作区文件
+随 collect 通道上收，scheduler 聚合兜底；写失败静默，不阻断 Skill）。
 """
 
 from __future__ import annotations
 
+import json
 import os
+import time
+from pathlib import Path
 from typing import Protocol
 
 from ..adapters.kv import InMemoryKv, KvPort
 
 USAGE_KEY = "task:usage:{task_id}"
 
+MODEL_CALLS_FILE = ".usage/model_calls.jsonl"
+
 
 class BudgetExceeded(RuntimeError):
     """单任务模型调用上限硬闸（§4.5：真跑飞了的闸门）。"""
+
+
+def record_model_call(entry: dict) -> None:
+    """逐次调用明细落工作区（jsonl 追加；文件目录不在 artifacts/ 下，不会被采集为产物）。
+
+    入参建议键：alias/model/prompt_tokens/completion_tokens/duration_ms/status/ts。
+    写失败静默（观测数据不阻断 Skill）。
+    """
+    try:
+        workspace = os.environ.get("SKILL_WORKSPACE") or os.environ.get("WORKSPACE") or os.getcwd()
+        path = Path(workspace) / MODEL_CALLS_FILE
+        path.parent.mkdir(parents=True, exist_ok=True)
+        record = {"ts": entry.get("ts") or int(time.time() * 1000), **entry}
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception:  # noqa: BLE001 - 观测数据写失败不阻断
+        pass
+
+
+def read_model_calls(workspace: str | Path) -> list[dict]:
+    """读取工作区逐次调用明细（scheduler collect 通道用；文件缺失返回空）。"""
+    path = Path(workspace) / MODEL_CALLS_FILE
+    if not path.exists():
+        return []
+    entries: list[dict] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entries.append(json.loads(line))
+        except ValueError:
+            continue
+    return entries
+
 
 
 class UsageReporter:

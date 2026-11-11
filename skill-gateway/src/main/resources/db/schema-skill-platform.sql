@@ -262,3 +262,200 @@ SET @ddl_skill = (SELECT IF(COUNT(*) = 0,
 PREPARE stmt2 FROM @ddl_skill;
 EXECUTE stmt2;
 DEALLOCATE PREPARE stmt2;
+
+-- ============================================================
+-- V2.1_1 增量（管理后台账号/权限、告警规则中心、模型调用明细）
+-- 新表 CREATE IF NOT EXISTS 对新库/存量库均幂等；加列沿用判存 PREPARE 模式
+-- ============================================================
+
+-- 管理后台账号（BCrypt 哈希；超管账号由 AdminUserSeeder 启动时空表种子，避免 SQL 硬编码哈希）
+CREATE TABLE IF NOT EXISTS `admin_user` (
+    `id`            BIGINT       NOT NULL AUTO_INCREMENT COMMENT '自增主键',
+    `username`      VARCHAR(64)  NOT NULL COMMENT '登录名',
+    `password_hash` VARCHAR(100) NOT NULL COMMENT 'BCrypt 哈希（spring-security-crypto）',
+    `display_name`  VARCHAR(64)  NULL    COMMENT '显示名',
+    `role_code`     VARCHAR(32)  NOT NULL DEFAULT 'VIEWER' COMMENT '关联 admin_role.role_code',
+    `status`        TINYINT      NOT NULL DEFAULT 1 COMMENT '1=启用 0=禁用',
+    `last_login_at` DATETIME     NULL    COMMENT '最近登录时间',
+    `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_admin_username` (`username`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='管理后台账号';
+
+CREATE TABLE IF NOT EXISTS `admin_role` (
+    `id`         BIGINT      NOT NULL AUTO_INCREMENT COMMENT '自增主键',
+    `role_code`  VARCHAR(32) NOT NULL COMMENT '角色编码：SUPER_ADMIN/SKILL_MANAGER/REVIEWER/OPS/VIEWER 及自定义',
+    `role_name`  VARCHAR(64) NOT NULL COMMENT '角色名称',
+    `remark`     VARCHAR(256) NULL   COMMENT '备注',
+    `builtin`    TINYINT     NOT NULL DEFAULT 0 COMMENT '1=预置角色（前端不可删除/改码）',
+    `created_at` DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_role_code` (`role_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='后台角色表';
+
+CREATE TABLE IF NOT EXISTS `admin_permission` (
+    `id`         BIGINT      NOT NULL AUTO_INCREMENT COMMENT '自增主键',
+    `perm_code`  VARCHAR(64) NOT NULL COMMENT '权限点：skill:upload / skill:review / execution:manage 等',
+    `perm_name`  VARCHAR(64) NOT NULL COMMENT '权限点名称',
+    `group_name` VARCHAR(32) NOT NULL COMMENT '前端菜单分组',
+    `sort_no`    INT         NOT NULL DEFAULT 0 COMMENT '组内排序',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_perm_code` (`perm_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='权限点字典';
+
+CREATE TABLE IF NOT EXISTS `admin_role_permission` (
+    `id`        BIGINT      NOT NULL AUTO_INCREMENT COMMENT '自增主键',
+    `role_code` VARCHAR(32) NOT NULL COMMENT '角色编码',
+    `perm_code` VARCHAR(64) NOT NULL COMMENT '权限点编码',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_role_perm` (`role_code`, `perm_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='角色-权限点映射';
+
+-- 告警规则（worker 经 /internal/runtime-config/alerts 60s 热下发）
+CREATE TABLE IF NOT EXISTS `alert_rule` (
+    `id`                   BIGINT       NOT NULL AUTO_INCREMENT COMMENT '自增主键',
+    `rule_code`            VARCHAR(64)  NOT NULL COMMENT '规则编码（告警去重键组成部分）',
+    `rule_name`            VARCHAR(128) NOT NULL COMMENT '规则名称',
+    `rule_type`            VARCHAR(32)  NOT NULL COMMENT 'RUNNING_TIMEOUT/TOKEN_EXCESS/TASK_FAILED/PENDING_STUCK/CALLBACK_DEAD_LETTER/WATCHDOG_INTERVENTION',
+    `skill_code`           VARCHAR(128) NULL COMMENT '限定 Skill 编码；NULL=全部 Skill',
+    `threshold_value`      BIGINT       NULL COMMENT '阈值：秒（超时类）/ token 数（超量类）/ 次数',
+    `severity`             VARCHAR(16)  NOT NULL DEFAULT 'WARN' COMMENT 'INFO/WARN/CRITICAL',
+    `channels`             VARCHAR(128) NOT NULL DEFAULT 'feishu,record' COMMENT '通知通道：feishu=飞书 webhook record=仅落库',
+    `dedup_window_seconds` INT          NOT NULL DEFAULT 86400 COMMENT '同任务同规则去重窗口（秒）',
+    `enabled`              TINYINT      NOT NULL DEFAULT 1 COMMENT '1=启用 0=停用',
+    `created_at`           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_rule_code` (`rule_code`),
+    KEY `idx_rule_type_enabled` (`rule_type`, `enabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='告警规则';
+
+-- 告警记录（待处理数 = status=PENDING 计数；同任务同规则单条，重复触发刷 last_seen_at）
+CREATE TABLE IF NOT EXISTS `alert_record` (
+    `id`            BIGINT       NOT NULL AUTO_INCREMENT COMMENT '自增主键',
+    `rule_id`       BIGINT       NULL COMMENT '触发规则 id（legacy 阈值告警为 NULL）',
+    `rule_code`     VARCHAR(64)  NOT NULL COMMENT '规则编码（legacy 告警写 legacy.running-timeout 等）',
+    `rule_type`     VARCHAR(32)  NOT NULL COMMENT '同 alert_rule.rule_type',
+    `severity`      VARCHAR(16)  NOT NULL DEFAULT 'WARN' COMMENT 'INFO/WARN/CRITICAL',
+    `status`        VARCHAR(16)  NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/ACKED/RESOLVED',
+    `task_id`       VARCHAR(64)  NULL COMMENT '关联任务（backlog 类可 NULL）',
+    `skill_code`    VARCHAR(128) NULL COMMENT 'Skill 编码',
+    `tenant_id`     VARCHAR(64)  NULL COMMENT '租户标识',
+    `title`         VARCHAR(256) NOT NULL COMMENT '告警标题',
+    `content`       TEXT         NULL COMMENT '告警正文',
+    `detail`        JSON         NULL COMMENT '扩展明细（耗时/tokens/错误码等）',
+    `notified`      TINYINT      NOT NULL DEFAULT 0 COMMENT '飞书是否已推送',
+    `first_seen_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '首次触发时间',
+    `last_seen_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最近触发时间',
+    `ack_by`        VARCHAR(64)  NULL COMMENT '认领人（admin username）',
+    `ack_at`        DATETIME     NULL COMMENT '认领时间',
+    `ack_note`      VARCHAR(512) NULL COMMENT '认领备注',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_task_rule` (`task_id`, `rule_code`),
+    KEY `idx_alert_status_time` (`status`, `first_seen_at`),
+    KEY `idx_alert_task` (`task_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='告警记录';
+
+-- 逐次模型调用明细（token 消耗与费用；cost_points 由 gateway 落库时按 model_provider 费率折算）
+CREATE TABLE IF NOT EXISTS `model_call` (
+    `id`                BIGINT        NOT NULL AUTO_INCREMENT COMMENT '自增主键',
+    `task_id`           VARCHAR(64)   NOT NULL COMMENT '关联执行任务ID',
+    `tenant_id`         VARCHAR(64)   NULL COMMENT '租户标识',
+    `skill_code`        VARCHAR(128)  NULL COMMENT 'Skill 编码',
+    `seq`               INT           NOT NULL DEFAULT 0 COMMENT '任务内序号（与 task_id 联合防重）',
+    `kind`              VARCHAR(16)   NOT NULL DEFAULT 'chat' COMMENT 'chat/embeddings/video',
+    `alias`             VARCHAR(64)   NULL COMMENT '实际命中 alias（含 fallback 后）',
+    `model_name`        VARCHAR(128)  NULL COMMENT '供应商侧模型名',
+    `provider`          VARCHAR(64)   NULL COMMENT '供应商标识',
+    `prompt_tokens`     INT           NULL COMMENT '输入 token',
+    `completion_tokens` INT           NULL COMMENT '输出 token',
+    `total_tokens`      INT           NULL COMMENT '总 token',
+    `cost_points`       DECIMAL(12,4) NULL COMMENT '折算点数成本（费率 × token）',
+    `duration_ms`       BIGINT        NULL COMMENT '调用耗时（毫秒）',
+    `status`            VARCHAR(16)   NOT NULL DEFAULT 'OK' COMMENT 'OK/FAILED',
+    `error_code`        VARCHAR(64)   NULL COMMENT '失败错误码',
+    `created_at`        DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '调用时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_task_seq` (`task_id`, `seq`),
+    KEY `idx_mc_task` (`task_id`),
+    KEY `idx_mc_skill_created` (`skill_code`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='逐次模型调用明细';
+
+-- skill_version 审计列（审核人/时间/驳回原因）
+SET @ddl_sv_reviewer = (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE skill_version ADD COLUMN reviewer VARCHAR(64) NULL COMMENT ''审核人（admin username）'' AFTER uploaded_by',
+    'SELECT 1')
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'skill_version' AND COLUMN_NAME = 'reviewer');
+PREPARE stmt3 FROM @ddl_sv_reviewer;
+EXECUTE stmt3;
+DEALLOCATE PREPARE stmt3;
+
+SET @ddl_sv_reviewed_at = (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE skill_version ADD COLUMN reviewed_at DATETIME NULL COMMENT ''审核时间'' AFTER reviewer',
+    'SELECT 1')
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'skill_version' AND COLUMN_NAME = 'reviewed_at');
+PREPARE stmt4 FROM @ddl_sv_reviewed_at;
+EXECUTE stmt4;
+DEALLOCATE PREPARE stmt4;
+
+SET @ddl_sv_reject = (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE skill_version ADD COLUMN reject_reason VARCHAR(512) NULL COMMENT ''驳回原因（status=2 时）'' AFTER reviewed_at',
+    'SELECT 1')
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'skill_version' AND COLUMN_NAME = 'reject_reason');
+PREPARE stmt5 FROM @ddl_sv_reject;
+EXECUTE stmt5;
+DEALLOCATE PREPARE stmt5;
+
+-- 权限点字典（19 项；ON DUPLICATE 幂等，名称可随版本演进）
+INSERT INTO admin_permission (perm_code, perm_name, group_name, sort_no) VALUES
+    ('metrics:read',      '监控查看',   '监控',   1),
+    ('skill:read',        '技能查看',   '技能',   1),
+    ('skill:upload',      '上传技能',   '技能',   2),
+    ('skill:review',      '审核版本',   '技能',   3),
+    ('skill:publish',     '上架/下架',  '技能',   4),
+    ('skill:rollback',    '版本回滚',   '技能',   5),
+    ('skill:delete',      '删除技能',   '技能',   6),
+    ('execution:read',    '执行查看',   '执行',   1),
+    ('execution:manage',  '停止/重试',  '执行',   2),
+    ('alert:read',        '告警查看',   '告警',   1),
+    ('alert:manage',      '告警管理',   '告警',   2),
+    ('model:read',        '模型查看',   '模型',   1),
+    ('model:manage',      '模型管理',   '模型',   2),
+    ('kb:manage',         '知识库管理', '知识库', 1),
+    ('key:read',          'Key查看',    '接入',   1),
+    ('key:manage',        'Key管理',    '接入',   2),
+    ('user:manage',       '用户管理',   '系统',   1),
+    ('sysconfig:read',    '配置查看',   '系统',   2),
+    ('sysconfig:manage',  '配置管理',   '系统',   3)
+ON DUPLICATE KEY UPDATE perm_name = VALUES(perm_name), group_name = VALUES(group_name), sort_no = VALUES(sort_no);
+
+-- 预置角色
+INSERT INTO admin_role (role_code, role_name, remark, builtin) VALUES
+    ('SUPER_ADMIN',   '超级管理员', '全部权限',             1),
+    ('SKILL_MANAGER', '技能管理',   '技能全生命周期',       1),
+    ('REVIEWER',      '审核员',     '版本审核',             1),
+    ('OPS',           '运维',       '执行/告警/模型运维',   1),
+    ('VIEWER',        '只读',       '只读观察',             1)
+ON DUPLICATE KEY UPDATE role_name = VALUES(role_name), builtin = 1;
+
+-- 角色-权限映射
+INSERT INTO admin_role_permission (role_code, perm_code) VALUES
+    ('SUPER_ADMIN', 'metrics:read'), ('SUPER_ADMIN', 'skill:read'), ('SUPER_ADMIN', 'skill:upload'),
+    ('SUPER_ADMIN', 'skill:review'), ('SUPER_ADMIN', 'skill:publish'), ('SUPER_ADMIN', 'skill:rollback'),
+    ('SUPER_ADMIN', 'skill:delete'), ('SUPER_ADMIN', 'execution:read'), ('SUPER_ADMIN', 'execution:manage'),
+    ('SUPER_ADMIN', 'alert:read'), ('SUPER_ADMIN', 'alert:manage'), ('SUPER_ADMIN', 'model:read'),
+    ('SUPER_ADMIN', 'model:manage'), ('SUPER_ADMIN', 'kb:manage'), ('SUPER_ADMIN', 'key:read'),
+    ('SUPER_ADMIN', 'key:manage'), ('SUPER_ADMIN', 'user:manage'), ('SUPER_ADMIN', 'sysconfig:read'),
+    ('SUPER_ADMIN', 'sysconfig:manage'),
+    ('SKILL_MANAGER', 'metrics:read'), ('SKILL_MANAGER', 'skill:read'), ('SKILL_MANAGER', 'skill:upload'),
+    ('SKILL_MANAGER', 'skill:review'), ('SKILL_MANAGER', 'skill:publish'), ('SKILL_MANAGER', 'skill:rollback'),
+    ('SKILL_MANAGER', 'skill:delete'), ('SKILL_MANAGER', 'execution:read'),
+    ('REVIEWER', 'metrics:read'), ('REVIEWER', 'skill:read'), ('REVIEWER', 'skill:review'),
+    ('OPS', 'metrics:read'), ('OPS', 'execution:read'), ('OPS', 'execution:manage'),
+    ('OPS', 'alert:read'), ('OPS', 'alert:manage'), ('OPS', 'model:read'), ('OPS', 'key:read'),
+    ('VIEWER', 'metrics:read'), ('VIEWER', 'skill:read'), ('VIEWER', 'execution:read'), ('VIEWER', 'alert:read')
+ON DUPLICATE KEY UPDATE role_code = VALUES(role_code);

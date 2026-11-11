@@ -22,9 +22,16 @@ import java.util.Map;
 public class MetricsService {
 
     private final ExecutionMapper executionMapper;
+    private final com.skill.platform.gateway.dal.mapper.ModelCallMapper modelCallMapper;
+    private final com.skill.platform.gateway.dal.mapper.AlertRecordMapper alertRecordMapper;
 
     /** 看板聚合（§10.1 执行监控实时视图）：吞吐/状态分布/Top5/回调/异常 */
     public Map<String, Object> dashboard(int hours) {
+        return dashboard(hours, 5);
+    }
+
+    /** 监控看板（V2.1 扩展 topN：大屏 TOP skill 排行传 10）。 */
+    public Map<String, Object> dashboard(int hours, int topN) {
         LocalDateTime since = LocalDateTime.now().minusHours(hours);
         Map<String, Object> board = new LinkedHashMap<>();
         board.put("queueDepth", count(Execution.STATUS_PENDING, null));
@@ -114,19 +121,36 @@ public class MetricsService {
         board.put("statusCountsToday", statusCounts);
         board.put("totalToday", count(null, dayStart()));
 
-        // Skill 用量 Top5（时间窗内）
+        // Skill 用量 TopN（时间窗内，V2.1 大屏可传 topN=10）
         List<Map<String, Object>> top = new ArrayList<>();
         var topRows = executionMapper.selectMaps(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<Execution>()
                 .select("skill_code", "COUNT(*) AS cnt")
                 .ge("created_at", since)
                 .groupBy("skill_code")
                 .orderByDesc("cnt")
-                .last("LIMIT 5"));
+                .last("LIMIT " + Math.min(Math.max(topN, 1), 50)));
         for (var row : topRows) {
             top.add(Map.of("skillCode", String.valueOf(row.get("skill_code")),
                     "count", ((Number) row.get("cnt")).longValue()));
         }
         board.put("skillUsageTop", top);
+
+        // V2.1 扩展：平均耗时（时间窗内终态任务）、token 用量与费用（model_call 聚合）、待处理告警数
+        List<Execution> terminalRows = executionMapper.selectList(new LambdaQueryWrapper<Execution>()
+                .in(Execution::getStatus, Execution.STATUS_SUCCEEDED, Execution.STATUS_FAILED,
+                        Execution.STATUS_CANCELLED)
+                .ge(Execution::getCreatedAt, since)
+                .select(Execution::getDurationMs));
+        double avgDuration = terminalRows.stream()
+                .mapToLong(e -> e.getDurationMs() == null ? 0L : e.getDurationMs()).average().orElse(0);
+        board.put("avgDurationMsWindow", Math.round(avgDuration));
+        String sinceText = since.toString().replace('T', ' ');
+        board.put("tokensWindow", modelCallMapper.sumTokensSince(sinceText));
+        board.put("costPointsWindow", modelCallMapper.sumCostSince(sinceText));
+        board.put("pendingAlertCount", alertRecordMapper.selectCount(
+                new LambdaQueryWrapper<com.skill.platform.gateway.dal.entity.AlertRecord>()
+                        .eq(com.skill.platform.gateway.dal.entity.AlertRecord::getStatus,
+                                com.skill.platform.gateway.dal.entity.AlertRecord.STATUS_PENDING)));
 
         // 回调成功率（终态任务，含 callback_status）
         long callbackSent = executionMapper.selectCount(new LambdaQueryWrapper<Execution>()

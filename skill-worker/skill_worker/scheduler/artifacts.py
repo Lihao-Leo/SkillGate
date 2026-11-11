@@ -20,10 +20,34 @@ SUFFIX_TYPES = {
     "json": "json", "html": "html",
 }
 
+# 后缀 → MIME（V2.1：落库 content_type；gateway 产物预览按 contentType/type 双口径判定）
+CONTENT_TYPES = {
+    "json": "application/json", "html": "text/html", "htm": "text/html",
+    "md": "text/markdown", "txt": "text/plain", "csv": "text/csv",
+    "pdf": "application/pdf",
+    "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif",
+    "webp": "image/webp", "svg": "image/svg+xml",
+    "mp4": "video/mp4", "webm": "video/webm", "mov": "video/quicktime",
+    "mp3": "audio/mpeg", "wav": "audio/wav", "m4a": "audio/mp4",
+}
+
 
 def infer_type(filename: str) -> str:
     suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     return SUFFIX_TYPES.get(suffix, "other")
+
+
+def infer_content_type(filename: str, declared_type: str = "") -> str:
+    """产物 MIME 推断：后缀表优先；声明 type 可识别时兜底（json→application/json 等）。"""
+    suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    mime = CONTENT_TYPES.get(suffix)
+    if mime:
+        return mime
+    return {
+        "json": "application/json", "html": "text/html", "markdown": "text/markdown",
+        "text": "text/plain", "video": "video/mp4", "image": "image/png",
+        "audio": "audio/mpeg",
+    }.get(declared_type.lower(), "application/octet-stream")
 
 
 def collect_artifacts(files: dict[str, bytes]) -> list[ArtifactFile]:
@@ -51,10 +75,12 @@ def collect_artifacts(files: dict[str, bytes]) -> list[ArtifactFile]:
         if filename == MANIFEST_NAME:
             continue  # manifest 本身不是产物
         declaration = declared_map.get(filename, {})
+        artifact_type = str(declaration.get("type") or infer_type(filename))
         artifacts.append(ArtifactFile(
             filename=filename,
             content=content,
-            type=str(declaration.get("type") or infer_type(filename)),
+            type=artifact_type,
+            content_type=infer_content_type(filename, artifact_type),
             meta=dict(declaration.get("meta") or {}),
         ))
     return artifacts

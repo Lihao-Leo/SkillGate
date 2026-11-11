@@ -50,6 +50,15 @@ skill-platform:
   # AppSecret / 供应商 Key 加密密钥（base64 32B；生产经 Secret 注入，此处为本地开发值）
   crypto-key: ${CRYPTO_KEY:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
   admin-token: ${ADMIN_TOKEN:change-me-admin-token}
+  admin-jwt:
+    # 后台登录 JWT（HS256 手写实现；生产必须换注入值并轮换 legacy admin-token）
+    secret: ${ADMIN_JWT_SECRET:dev-admin-jwt-secret-change-me}
+    expire-hours: ${ADMIN_JWT_EXPIRE_HOURS:12}
+  admin:
+    # 超管种子密码（AdminUserSeeder 仅在 admin_user 空表时创建 admin 账号）
+    init-password: ${ADMIN_INIT_PASSWORD:Admin@12345}
+    # 产物在线预览字节上限（超限提示走预签名下载）
+    artifact-preview-max-bytes: ${ARTIFACT_PREVIEW_MAX_BYTES:262144}
   recharge-url: ${RECHARGE_URL:https://recharge.example.com}
   public-base-url: ${PUBLIC_BASE_URL:http://localhost:8888}
   quota:

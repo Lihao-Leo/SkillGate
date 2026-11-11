@@ -45,7 +45,10 @@ public class KbAdminService {
         if (tenantId == null || tenantId.isBlank() || name == null || name.isBlank()) {
             throw new BizException(ErrorCode.PARAM_INVALID, "tenantId / name 必填");
         }
-        String kbId = "kb_" + Ids.randomBase64(9).replaceAll("[^a-zA-Z0-9]", "").substring(0, 10).toLowerCase();
+        // 小写字母数字 id（hex 取前 10 位；原 randomBase64+strip 在随机串含 ≥3 个非字母数字
+        // 字符时会不足 10 位导致 substring 越界——存量概率 bug，已于 2026-11 修复）
+        String kbId = ("kb_" + java.util.UUID.randomUUID().toString().replace("-", ""))
+                .substring(0, 13).toLowerCase();
         Kb kb = new Kb();
         kb.setKbId(kbId);
         kb.setTenantId(tenantId);

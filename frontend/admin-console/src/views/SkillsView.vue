@@ -2,7 +2,12 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
-import { gatewayApi, type SkillDetail, type SkillPage } from '../api/gateway'
+import { gatewayApi, type SkillDetail, type SkillPage, type SkillSummary } from '../api/gateway'
+import { useAuthStore } from '../stores/auth'
+import { useCredentialsStore } from '../stores/credentials'
+
+const auth = useAuthStore()
+const creds = useCredentialsStore()
 
 /** JSON 宽松解析（失败返回 null，用于回填默认值） */
 const JsonCodecSafe = {
@@ -17,7 +22,7 @@ const JsonCodecSafe = {
 }
 
 const page = ref<SkillPage | null>(null)
-const query = reactive({ pageNo: 1, pageSize: 20 })
+const query = reactive({ pageNo: 1, pageSize: 20, tenantId: '', skillCode: '' })
 const loading = ref(false)
 const detail = ref<SkillDetail | null>(null)
 const detailVisible = ref(false)
@@ -31,6 +36,7 @@ const configForm = reactive({
 const uploadVisible = ref(false)
 const uploadSubmitting = ref(false)
 const uploadForm = reactive({
+  tenantId: 'admin-console',
   skillCode: '', version: '', name: '', description: '', visibility: 'PRIVATE',
   requiredAbilities: '', changelog: '', publish: false,
   // 执行与计费（结构化生成 outputConfig / pricingConfig JSON）
@@ -57,7 +63,11 @@ let runTimer: ReturnType<typeof setInterval> | null = null
 async function load() {
   loading.value = true
   try {
-    page.value = await gatewayApi.listSkills(query.pageNo, query.pageSize)
+    page.value = await gatewayApi.adminListSkills({
+      tenantId: query.tenantId.trim() || undefined,
+      skillCode: query.skillCode.trim() || undefined,
+      pageNo: query.pageNo, pageSize: query.pageSize,
+    })
   } catch (e) {
     ElMessage.error((e as Error).message)
   } finally {
@@ -66,9 +76,9 @@ async function load() {
 }
 onMounted(load)
 
-async function openDetail(skillCode: string) {
+async function openDetail(row: SkillSummary) {
   try {
-    detail.value = await gatewayApi.skillDetail(skillCode)
+    detail.value = await gatewayApi.adminSkillDetail(row.tenantId, row.skillCode)
     const output = JsonCodecSafe.parse(detail.value.skill.outputConfig ?? '') ?? {}
     configForm.timeoutSeconds = Number(output.timeoutSeconds ?? 600)
     const pricing = JsonCodecSafe.parse(detail.value.skill.pricingConfig ?? '') ?? {}
@@ -81,13 +91,23 @@ async function openDetail(skillCode: string) {
   }
 }
 
-/** 默认版本切换 = 秒级回滚（§10.1） */
+/** 版本回滚 = 切换默认版本（秒级生效，§8.3） */
 async function makeDefault(version: string) {
   if (!detail.value) return
+  const tenantId = detail.value.skill.tenantId
+  const skillCode = detail.value.skill.skillCode
+  const current = detail.value.skill.defaultVersion || '（无）'
   try {
-    await gatewayApi.setDefaultVersion(detail.value.skill.skillCode, version)
-    ElMessage.success(`默认版本已切至 ${version}`)
-    detail.value = await gatewayApi.skillDetail(detail.value.skill.skillCode)
+    await ElMessageBox.confirm(
+      `将「${skillCode}」默认版本从 ${current} 回滚到 ${version}？新执行立即解析到目标版本。`,
+      '版本回滚确认', { type: 'warning', confirmButtonText: '回滚', cancelButtonText: '取消' })
+  } catch {
+    return
+  }
+  try {
+    await gatewayApi.adminSetDefaultVersion(tenantId, skillCode, version)
+    ElMessage.success(`默认版本已回滚至 ${version}`)
+    detail.value = await gatewayApi.adminSkillDetail(tenantId, skillCode)
   } catch (e) {
     ElMessage.error((e as Error).message)
   }
@@ -100,7 +120,8 @@ async function saveConfig() {
     ? JSON.stringify({ mode: 'FREE' })
     : JSON.stringify({ mode: 'PER_EXECUTION', points: configForm.pricingPoints })
   try {
-    await gatewayApi.updateSkillConfig(detail.value.skill.skillCode, outputConfig, pricingConfig)
+    await gatewayApi.adminUpdateSkillConfig(detail.value.skill.tenantId,
+      detail.value.skill.skillCode, outputConfig, pricingConfig)
     ElMessage.success('运营配置已更新（即时生效）')
   } catch (e) {
     ElMessage.error((e as Error).message)
@@ -109,6 +130,7 @@ async function saveConfig() {
 
 function openUpload() {
   Object.assign(uploadForm, {
+    tenantId: 'admin-console',
     skillCode: '', version: '', name: '', description: '', visibility: 'PRIVATE',
     requiredAbilities: '', changelog: '', publish: false,
     timeoutSeconds: 600, pricingMode: 'PER_EXECUTION', pricingPoints: 1,
@@ -192,8 +214,8 @@ async function submitUpload() {
   }
   uploadSubmitting.value = true
   try {
-    const version = await gatewayApi.uploadSkill({
-      skillCode: uploadForm.skillCode.trim(),
+    const version = await gatewayApi.adminUploadSkill(uploadForm.tenantId.trim(),
+      uploadForm.skillCode.trim(), {
       version: uploadForm.version.trim(),
       name: uploadForm.name.trim(),
       description: uploadForm.description.trim(),
@@ -227,6 +249,7 @@ function pricingText(text: string | null | undefined): string {
 }
 
 async function openRun(skillCode: string, version?: string) {
+  const row = page.value?.items.find(s => s.skillCode === skillCode)
   Object.assign(runDialog, {
     visible: true, skillCode, version: version ?? '', instructions: '', context: '',
     submitting: false, taskId: '', status: '', progress: null, artifacts: [], polling: false,
@@ -235,7 +258,9 @@ async function openRun(skillCode: string, version?: string) {
   })
   // 数量控制（§4.4）：可数技能才显示/传 count，规则来自 output_config
   try {
-    const detail = await gatewayApi.skillDetail(skillCode)
+    const detail = row
+      ? await gatewayApi.adminSkillDetail(row.tenantId, skillCode)
+      : await gatewayApi.skillDetail(skillCode)
     if (detail.skill.outputConfig) {
       const output = JSON.parse(detail.skill.outputConfig)
       runDialog.countable = Boolean(output.countable)
@@ -325,30 +350,42 @@ function stopRunPolling() {
   runDialog.polling = false
 }
 
-/** 版本审核流转：通过(1)/驳回·废弃(2)；按钮可见性由版本状态驱动 */
+/** 版本审核流转：通过(1)/驳回·废弃(2)；驳回需填原因（写审计列 reject_reason） */
 async function review(version: string, status: 1 | 2) {
   if (!detail.value) return
-  const actionText = status === 1 ? '审核通过并发布' : '驳回/废弃'
+  const tenantId = detail.value.skill.tenantId
+  const skillCode = detail.value.skill.skillCode
+  let reason: string | undefined
+  if (status === 2) {
+    try {
+      const { value } = await ElMessageBox.prompt(
+        '请填写驳回/废弃原因（写入审核记录）', `${version} 驳回`,
+        { inputPlaceholder: '如：产物结构与调用说明不符', inputValue: '' })
+      reason = (value ?? '').trim() || undefined
+    } catch {
+      return
+    }
+  }
   try {
-    await gatewayApi.reviewVersion(detail.value.skill.skillCode, version, status)
-    ElMessage.success(`${version} ${actionText}成功`)
-    detail.value = await gatewayApi.skillDetail(detail.value.skill.skillCode)
+    await gatewayApi.adminReviewVersion(tenantId, skillCode, version, status, reason)
+    ElMessage.success(`${version} ${status === 1 ? '审核通过并发布' : '已驳回/废弃'}（审核人：${auth.username}）`)
+    detail.value = await gatewayApi.adminSkillDetail(tenantId, skillCode)
   } catch (e) {
     ElMessage.error((e as Error).message)
   }
 }
 
 /** 删除 Skill（硬删元数据与版本记录，清理 COS 包对象；历史执行记录保留审计） */
-async function confirmDelete(skillCode: string) {
+async function confirmDelete(row: SkillSummary) {
   try {
     await ElMessageBox.confirm(
-      `确定删除 Skill「${skillCode}」？将删除全部版本记录并清理对象存储中的包文件，不可恢复。`,
+      `确定删除 Skill「${row.skillCode}」（租户 ${row.tenantId}）？将删除全部版本记录并清理对象存储中的包文件，不可恢复。`,
       '删除确认', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' })
   } catch {
     return
   }
   try {
-    await gatewayApi.deleteSkill(skillCode)
+    await gatewayApi.adminDeleteSkill(row.tenantId, row.skillCode)
     ElMessage.success('已删除')
     await load()
   } catch (e) {
@@ -356,11 +393,11 @@ async function confirmDelete(skillCode: string) {
   }
 }
 
-/** 市场上/下架 */
-async function toggleVisibility(skillCode: string, current: string) {
-  const target = current === 'PUBLIC' ? 'PRIVATE' : 'PUBLIC'
+/** 市场上/下架（skill:publish） */
+async function toggleVisibility(row: SkillSummary) {
+  const target = row.visibility === 'PUBLIC' ? 'PRIVATE' : 'PUBLIC'
   try {
-    await gatewayApi.setVisibility(skillCode, target as 'PUBLIC' | 'PRIVATE')
+    await gatewayApi.adminSetVisibility(row.tenantId, row.skillCode, target as 'PUBLIC' | 'PRIVATE')
     ElMessage.success(target === 'PUBLIC' ? '已上架市场' : '已下架市场')
     await load()
   } catch (e) {
@@ -373,11 +410,16 @@ async function toggleVisibility(skillCode: string, current: string) {
   <div class="page-header">
     <div>
       <h2>Skill 管理</h2>
-      <p class="sub">Skill 元数据、版本与审核、默认版本（秒级回滚）与运营配置</p>
+      <p class="sub">Skill 元数据、版本审核（权限隔离）、回滚与运营配置</p>
     </div>
-    <div>
+    <div style="display: flex; gap: 8px; align-items: center">
+      <el-input v-model="query.tenantId" placeholder="租户过滤" clearable style="width: 150px"
+                @keyup.enter="load" @clear="load" />
+      <el-input v-model="query.skillCode" placeholder="skillCode 过滤" clearable style="width: 170px"
+                @keyup.enter="load" @clear="load" />
       <el-button @click="load">刷新</el-button>
-      <el-button type="primary" @click="openUpload" data-testid="open-upload">
+      <el-button v-if="auth.hasPerm('skill:upload')" type="primary" @click="openUpload"
+                 data-testid="open-upload">
         <el-icon style="margin-right: 4px"><UploadFilled /></el-icon>上传 Skill
       </el-button>
     </div>
@@ -385,6 +427,7 @@ async function toggleVisibility(skillCode: string, current: string) {
 
   <el-card>
     <el-table :data="page?.items ?? []" v-loading="loading" data-testid="skills-table">
+      <el-table-column prop="tenantId" label="租户" width="130" show-overflow-tooltip />
       <el-table-column label="Skill" min-width="220">
         <template #default="{ row }">
           <div class="skill-cell">
@@ -421,18 +464,25 @@ async function toggleVisibility(skillCode: string, current: string) {
       <el-table-column label="计费" width="120">
         <template #default="{ row }">{{ pricingText(row.pricingConfig) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="170" fixed="right">
+      <el-table-column label="操作" width="210" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDetail(row.skillCode)"
+          <el-button link type="primary" @click="openDetail(row)"
                      :data-testid="`detail-${row.skillCode}`">详情</el-button>
-          <el-button link type="success" @click="openRun(row.skillCode, row.defaultVersion)"
-                     :data-testid="`run-${row.skillCode}`">试运行</el-button>
-          <el-button link :type="row.visibility === 'PUBLIC' ? 'danger' : 'warning'" size="small"
-                     @click="toggleVisibility(row.skillCode, row.visibility)"
+          <el-tooltip :disabled="creds.appKeyReady" content="试运行走业务面计费，需先在「业务凭证」绑定 AppKey">
+            <span>
+              <el-button link type="success" :disabled="!creds.appKeyReady"
+                         @click="openRun(row.skillCode, row.defaultVersion)"
+                         :data-testid="`run-${row.skillCode}`">试运行</el-button>
+            </span>
+          </el-tooltip>
+          <el-button v-if="auth.hasPerm('skill:publish')" link
+                     :type="row.visibility === 'PUBLIC' ? 'danger' : 'warning'" size="small"
+                     @click="toggleVisibility(row)"
                      :data-testid="`shelf-${row.skillCode}`">
             {{ row.visibility === 'PUBLIC' ? '下架' : '上架' }}
           </el-button>
-          <el-button link type="danger" size="small" @click="confirmDelete(row.skillCode)"
+          <el-button v-if="auth.hasPerm('skill:delete')" link type="danger" size="small"
+                     @click="confirmDelete(row)"
                      :data-testid="`delete-${row.skillCode}`">删除</el-button>
         </template>
       </el-table-column>
@@ -445,15 +495,21 @@ async function toggleVisibility(skillCode: string, current: string) {
   <el-dialog v-model="uploadVisible" title="上传 Skill 包" width="640px" :close-on-click-modal="false">
     <el-form label-width="110px" data-testid="upload-form">
       <el-row :gutter="12">
-        <el-col :span="12">
-          <el-form-item label="skillCode" required>
+        <el-col :span="8">
+          <el-form-item label="租户" required>
+            <el-input v-model="uploadForm.tenantId" data-testid="upload-tenant"
+                      placeholder="上传到哪个租户" />
+          </el-form-item>
+        </el-col>
+        <el-col :span="8">
+          <el-form-item label="skillCode" required label-width="86px">
             <el-input v-model="uploadForm.skillCode" placeholder="如 video-gen"
                       data-testid="upload-skillcode" />
           </el-form-item>
         </el-col>
-        <el-col :span="12">
-          <el-form-item label="版本" required>
-            <el-input v-model="uploadForm.version" placeholder="如 1.0.0（不覆盖同名版本）"
+        <el-col :span="8">
+          <el-form-item label="版本" required label-width="60px">
+            <el-input v-model="uploadForm.version" placeholder="如 1.0.0"
                       data-testid="upload-version" />
           </el-form-item>
         </el-col>
@@ -540,26 +596,37 @@ async function toggleVisibility(skillCode: string, current: string) {
         </el-table-column>
         <el-table-column label="状态" width="80">
           <template #default="{ row }">
-            <el-tag size="small" effect="light"
-                    :type="row.status === 1 ? 'success' : row.status === 2 ? 'danger' : 'info'">
-              {{ row.status === 1 ? '已发布' : row.status === 2 ? '已废弃' : '待审核' }}
-            </el-tag>
+            <el-tooltip :disabled="!(row.rejectReason || row.reviewer)"
+                        :content="`审核人：${row.reviewer ?? '-'}${row.rejectReason ? ' · 原因：' + row.rejectReason : ''}`"
+                        placement="top">
+              <span>
+                <el-tag size="small" effect="light"
+                        :type="row.status === 1 ? 'success' : row.status === 2 ? 'danger' : 'info'">
+                  {{ row.status === 1 ? '已发布' : row.status === 2 ? '已废弃' : '待审核' }}
+                </el-tag>
+              </span>
+            </el-tooltip>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="190">
+        <el-table-column label="操作" width="210">
           <template #default="{ row }">
-            <el-button v-if="row.status === 0" link type="success" size="small"
-                       @click="review(row.version, 1)"
+            <el-button v-if="row.status === 0 && auth.hasPerm('skill:review')" link type="success"
+                       size="small" @click="review(row.version, 1)"
                        :data-testid="`approve-${row.version}`">通过</el-button>
-            <el-button v-if="row.status === 0" link type="danger" size="small"
-                       @click="review(row.version, 2)"
+            <el-button v-if="row.status === 0 && auth.hasPerm('skill:review')" link type="danger"
+                       size="small" @click="review(row.version, 2)"
                        :data-testid="`reject-${row.version}`">驳回</el-button>
-            <el-button v-if="row.status === 1" link type="danger" size="small"
-                       @click="review(row.version, 2)"
+            <el-button v-if="row.status === 1 && auth.hasPerm('skill:review')" link type="danger"
+                       size="small" @click="review(row.version, 2)"
                        :data-testid="`deprecate-${row.version}`">废弃</el-button>
-            <el-button v-if="row.version !== detail.skill.defaultVersion && row.status === 1"
-                       link type="primary" size="small" @click="makeDefault(row.version)"
-                       :data-testid="`make-default-${row.version}`">设为默认</el-button>
+            <el-tooltip v-if="row.version !== detail.skill.defaultVersion && row.status === 1
+                           && auth.hasPerm('skill:rollback')"
+                        content="秒级回滚：新执行立即解析到此版本" placement="top">
+              <span>
+                <el-button link type="primary" size="small" @click="makeDefault(row.version)"
+                           :data-testid="`make-default-${row.version}`">回滚到此版</el-button>
+              </span>
+            </el-tooltip>
             <el-tag v-if="row.version === detail.skill.defaultVersion"
                     size="small" type="primary" effect="plain">默认</el-tag>
           </template>

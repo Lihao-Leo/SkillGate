@@ -23,6 +23,7 @@ from ..config import Settings
 from ..domain import (CANCELLING, PENDING, RUNNING, ArtifactFile, Execution, RunResult, Usage)
 from ..telemetry import current_trace_id, current_traceparent
 from . import artifacts as artifact_rules
+from . import alert_rules as alert_matchers
 from . import usage as usage_rules
 from .callback import callback_body
 
@@ -76,7 +77,8 @@ class Orchestrator:
     def __init__(self, executions: ExecutionRepository, artifacts: ArtifactRepository,
                  skills: SkillRepository, sandbox: SandboxPort, oss: OssPort, kv: KvPort,
                  mq: MqPort, billing: BillingPort, settings: Settings,
-                 now_fn=time.time, events=None, notifier=None, alert_config=None):
+                 now_fn=time.time, events=None, notifier=None, alert_config=None,
+                 model_call_reporter=None, alert_record_reporter=None):
         self._executions = executions
         self._artifacts = artifacts
         self._skills = skills
@@ -89,6 +91,9 @@ class Orchestrator:
         self._events = events
         self._notifier = notifier
         self._alert_config = alert_config
+        self._model_calls = model_call_reporter
+        self._alert_records = alert_record_reporter
+        self._call_seq: dict[str, int] = {}
         self.settle_flow = SettleFlow(billing, mq, settings)
 
     # ------------------------------------------------------------------
@@ -115,9 +120,9 @@ class Orchestrator:
         except Exception:  # noqa: BLE001 - 观测不阻塞执行主链路
             logger.warning("event report failed: task=%s stage=%s", execution.task_id, stage)
 
-    def _alert(self, text: str, dedup_key: str | None = None) -> None:
+    def _alert(self, text: str, dedup_key: str | None = None, ttl_seconds: int = 86400) -> None:
         """飞书群告警（可选）；统一配置来源 = sys_config（client 热下发）→ env 兜底；
-        dedup_key 命中已告警记录则跳过（防轰炸）。"""
+        dedup_key 命中已告警记录则跳过（防轰炸），TTL 按规则窗口（默认 86400）。"""
         self._refresh_alert_config()
         if self._notifier is None or not getattr(self._notifier, "enabled", False):
             return
@@ -126,10 +131,43 @@ class Orchestrator:
                 flag = f"task:alerted:{dedup_key}"
                 if self._kv.get(flag):
                     return
-                self._kv.set(flag, "1", ttl_seconds=86400)
+                self._kv.set(flag, "1", ttl_seconds=ttl_seconds)
             self._notifier.send_text(text)
         except Exception:  # noqa: BLE001 - 告警不阻塞执行主链路
             logger.warning("feishu alert failed: %s", dedup_key)
+
+    def _record_alerts(self, rules: list[dict], execution: Execution, title: str,
+                       content: str, detail: dict | None, notified: bool) -> None:
+        """命中的规则逐条落库（gateway /internal/alert-records；uk 幂等刷 last_seen_at）。
+        上报器缺省（单测/未接线）静默跳过。"""
+        if self._alert_records is None or not rules:
+            return
+        occurred_at = datetime.now().isoformat(timespec="milliseconds")
+        for rule in rules:
+            try:
+                self._alert_records.report(alert_matchers.build_record(
+                    rule, execution.task_id, execution.skill_code, execution.tenant_id,
+                    title, content, detail, notified, occurred_at))
+            except Exception:  # noqa: BLE001 - 观测不阻塞执行主链路
+                logger.warning("alert record report failed: task=%s rule=%s",
+                               execution.task_id, rule.get("ruleCode"))
+
+    def _fire_alert(self, rule_type: str, execution: Execution, value: float | None,
+                    title: str, content: str, dedup_key: str, detail: dict | None = None) -> None:
+        """V2.1 规则化告警入口：match_rules → 飞书（沿用文案）+ 落库记录。
+        dedup 键 {taskId}:{ruleCode}，TTL 取规则窗口（legacy 兜底规则 86400）。"""
+        rules = alert_matchers.match_rules(
+            alert_matchers.effective_rules(self._alert_config, self._settings), rule_type,
+            execution.skill_code, value)
+        if not rules:
+            return
+        self._refresh_alert_config()
+        notified = False
+        for rule in rules:
+            ttl = int(rule.get("dedupWindowSeconds") or 86400)
+            self._alert(content, dedup_key=f"{dedup_key}:{rule.get('ruleCode')}", ttl_seconds=ttl)
+            notified = True
+        self._record_alerts(rules, execution, title, content, detail, notified)
 
     def _refresh_alert_config(self) -> None:
         """统一配置热生效：sys_config（管理后台系统配置页）→ 60s 缓存拉取 → env 兜底。"""
@@ -209,15 +247,17 @@ class Orchestrator:
                     (time.time() - collect_start) * 1000,
                     {"file_count": len(files),
                      "error_code": None if result.ok else result.error_code})
-        usage = self._flush_usage(execution.task_id)
-        # token 超限告警（统一配置 alert.tokens>0 时生效，Redis 去重）
-        threshold = (self._alert_config.tokens_threshold()
-                     if self._alert_config is not None else self._settings.alert_tokens)
-        if threshold > 0 and usage.tokens > threshold:
-            self._alert(
-                f"⚠️ 任务 token 超限 task={execution.task_id} skill={execution.skill_code} "
-                f"tokens={usage.tokens} 阈值={threshold}（可在管理台强制终止）",
-                dedup_key=f"{execution.task_id}:tokens")
+        # V2.1：逐次模型调用明细上收（工作区 .usage/model_calls.jsonl → gateway model_call 表）
+        call_entries = self._collect_model_calls(execution)
+        usage = self._flush_usage(execution.task_id, fallback_entries=call_entries)
+        # token 超限告警（V2.1 规则化：gateway 下发规则；无规则时 legacy alert.tokens 阈值兜底）
+        self._fire_alert(
+            alert_matchers.RULE_TOKEN_EXCESS, execution, usage.tokens,
+            title=f"任务 token 超限：{execution.skill_code}",
+            content=f"task={execution.task_id} skill={execution.skill_code} "
+                    f"tokens={usage.tokens}（可在管理台强制终止）",
+            dedup_key=execution.task_id,
+            detail={"tokens": usage.tokens, "modelCalls": usage.model_calls})
         self._finish(execution, result, files, usage)
 
     def _finish(self, execution: Execution, result: RunResult, files: list[ArtifactFile],
@@ -261,13 +301,17 @@ class Orchestrator:
         self._event(execution, "FINALIZE", "OK", duration_ms,
                     {"final_status": final_status,
                      "error_code": result.error_code})
-        # 失败告警（可选）：含失败码与扣点情况，便于群里直接感知成本异常
+        # 失败告警（V2.1 规则化）：含失败码与扣点情况，便于群里直接感知成本异常
         if final_status == "FAILED":
-            self._alert(
-                f"❌ 任务失败 task={execution.task_id} skill={execution.skill_code} "
-                f"err={result.error_code} 扣点={charged} tokens={usage.tokens} "
-                f"时长={duration_ms}ms\n{str(result.error_message or '')[:200]}",
-                dedup_key=f"{execution.task_id}:failed")
+            self._fire_alert(
+                alert_matchers.RULE_TASK_FAILED, execution, duration_ms,
+                title=f"任务失败：{execution.skill_code}（{result.error_code}）",
+                content=f"task={execution.task_id} skill={execution.skill_code} "
+                        f"err={result.error_code} 扣点={charged} tokens={usage.tokens} "
+                        f"时长={duration_ms}ms\n{str(result.error_message or '')[:200]}",
+                dedup_key=execution.task_id,
+                detail={"errorCode": result.error_code, "points": charged,
+                        "tokens": usage.tokens, "durationMs": duration_ms})
 
         if execution.callback_url:
             body = callback_body(execution, result, artifact_views, charged, settled, usage,
@@ -368,8 +412,58 @@ class Orchestrator:
             time.sleep(self._settings.watch_poll_seconds)
         return RunResult.failed("INTERNAL", "watch deadline exceeded"), False
 
-    def _flush_usage(self, task_id: str) -> Usage:
-        return usage_rules.flush_usage(self._kv, task_id)
+    def _flush_usage(self, task_id: str, fallback_entries: list[dict] | None = None) -> Usage:
+        """终态刷回聚合用量；Redis 聚合为空但逐次明细存在时按明细聚合兜底
+        （修复 K8s 沙箱未注入 REDIS_URL 的聚合断链，METERED 结算随之受益）。"""
+        usage = usage_rules.flush_usage(self._kv, task_id)
+        if usage.model_calls == 0 and usage.tokens == 0 and fallback_entries:
+            for entry in fallback_entries:
+                kind = str(entry.get("kind") or "chat").lower()
+                if kind == "video":
+                    usage.video_calls += 1
+                    continue
+                usage.llm_calls += 1
+                usage.llm_input_tokens += int(entry.get("promptTokens")
+                                              or entry.get("prompt_tokens") or 0)
+                usage.llm_output_tokens += int(entry.get("completionTokens")
+                                               or entry.get("completion_tokens") or 0)
+        return usage
+
+    def _collect_model_calls(self, execution: Execution) -> list[dict]:
+        """上收工作区逐次调用明细 → reporter（camelCase 契约）；返回原始明细供聚合兜底。
+        上报器缺省（单测/未接线）或沙箱未实现（旧 FakeSandbox）静默跳过。"""
+        try:
+            entries = self._sandbox.collect_usage(execution.task_id)
+        except Exception:  # noqa: BLE001 - 观测不阻塞主链路
+            return []
+        if not entries:
+            return []
+        if self._model_calls is not None:
+            base_seq = self._call_seq.get(execution.task_id, 0)
+            for entry in entries:
+                base_seq += 1
+                self._call_seq[execution.task_id] = base_seq
+                try:
+                    self._model_calls.report({
+                        "taskId": execution.task_id,
+                        "tenantId": execution.tenant_id,
+                        "skillCode": execution.skill_code,
+                        "seq": base_seq,
+                        "kind": entry.get("kind") or "chat",
+                        "alias": entry.get("alias") or "",
+                        "modelName": entry.get("model") or "",
+                        "promptTokens": int(entry.get("prompt_tokens") or 0),
+                        "completionTokens": int(entry.get("completion_tokens") or 0),
+                        "durationMs": entry.get("duration_ms"),
+                        "status": entry.get("status") or "OK",
+                        "errorCode": entry.get("error_code"),
+                        "occurredAt": datetime.fromtimestamp(
+                            (entry.get("ts") or time.time() * 1000) / 1000
+                        ).isoformat(timespec="milliseconds"),
+                    })
+                except Exception:  # noqa: BLE001 - 观测不阻塞主链路
+                    logger.warning("model call report failed: task=%s", execution.task_id)
+        return entries
 
     def _started_clock(self, execution: Execution) -> float:
         return execution.started_at.timestamp() if execution.started_at else time.time()

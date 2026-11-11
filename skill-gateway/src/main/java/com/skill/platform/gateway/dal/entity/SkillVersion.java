@@ -44,5 +44,13 @@ public class SkillVersion {
 
     private String uploadedBy;
 
+    /** 审核人（admin username / AppKey 标识）；V2.1 审计列 */
+    private String reviewer;
+
+    private LocalDateTime reviewedAt;
+
+    /** 驳回原因（status=2 时） */
+    private String rejectReason;
+
     private LocalDateTime createdAt;
 }

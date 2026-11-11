@@ -40,6 +40,7 @@ def sandbox_spec(execution: Execution, image: str, workspace_root: str,
         env={
             "SKILL_TASK_ID": execution.task_id,
             "SKILL_INPUT": os.path.join(workdir, "input.json"),
+            "SKILL_WORKSPACE": workdir,
             "OPENAI_BASE_URL": litellm_base_url,
             "OPENAI_API_KEY": f"{litellm_api_key}-task-{execution.task_id}",
             "SKILL_MODELS": models,
@@ -71,6 +72,10 @@ class SandboxPort(Protocol):
         """采集工作区 artifacts/（manifest 优先由 artifacts 模块解析）"""
         ...
 
+    def collect_usage(self, task_id: str) -> list[dict]:
+        """采集工作区逐次模型调用明细（V2.1 .usage/model_calls.jsonl；缺失返回空）"""
+        ...
+
 
 class FakeSandbox:
     """测试用沙箱：可编程结果 + 工作区文件暂存（成功时测试预先写入产物）。"""
@@ -81,6 +86,7 @@ class FakeSandbox:
         self.workspace: dict[str, dict[str, bytes]] = {}
         self.programmed: dict[str, str] = {}  # task_id → job 终态
         self.fail_sha256: set[str] = set()
+        self.usage: dict[str, list[dict]] = {}
 
     def program(self, task_id: str, status: str) -> None:
         self.programmed[task_id] = status
@@ -120,6 +126,13 @@ class FakeSandbox:
                  for name, content in self.workspace.get(task_id, {}).items()
                  if name.startswith("artifacts/")}
         return collect_artifacts(files)
+
+    def collect_usage(self, task_id: str) -> list[dict]:
+        return self.usage.pop(task_id, [])
+
+    def write_usage(self, task_id: str, entries: list[dict]) -> None:
+        """测试可编程：预置逐次调用明细。"""
+        self.usage.setdefault(task_id, []).extend(entries)
 
 
 class K8sSandbox:
@@ -246,6 +259,12 @@ class K8sSandbox:
         from ..scheduler.artifacts import collect_artifacts
 
         return collect_artifacts(files)
+
+    def collect_usage(self, task_id: str) -> list[dict]:
+        from ..toolset.usage import read_model_calls
+
+        workdir = os.path.join(self._workspace_root, task_id)
+        return read_model_calls(workdir)
 
 
 class LocalSubprocessSandbox:
@@ -377,3 +396,8 @@ class LocalSubprocessSandbox:
                 if path.is_file():
                     files[str(path.relative_to(artifacts_dir))] = path.read_bytes()
         return collect_artifacts(files)
+
+    def collect_usage(self, task_id: str) -> list[dict]:
+        from ..toolset.usage import read_model_calls
+
+        return read_model_calls(self._workdir(task_id))

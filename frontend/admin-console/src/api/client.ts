@@ -21,8 +21,12 @@ export class ApiError extends Error {
 export interface GatewayClientOptions {
   /** 业务面凭证（HMAC）；为 null 时调用业务面接口抛错 */
   getCredentials: () => Credentials | null
-  /** 管理面 token */
+  /** 管理面 legacy 静态 token（V2.1 过渡兼容；与 JWT 同时携带，服务端 Bearer 优先） */
   getAdminToken: () => string | null
+  /** 后台登录 JWT（Authorization: Bearer；null=未登录） */
+  getAuthToken: () => string | null
+  /** 401（JWT 失效）回调：清会话并跳登录页 */
+  onUnauthorized?: () => void
   /** 注入 fetch（测试替身）；默认全局 fetch */
   fetchImpl?: typeof fetch
 }
@@ -97,45 +101,80 @@ export function createGatewayClient(options: GatewayClientOptions) {
     return unwrap<T>(response, doFetch)
   }
 
-  /** 管理面：X-Admin-Token */
+  /** 管理面请求头：JWT Bearer（V2.1 主通道）+ legacy X-Admin-Token（过渡兼容） */
+  function adminHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {}
+    const jwt = options.getAuthToken()
+    if (jwt) headers['Authorization'] = `Bearer ${jwt}`
+    const legacy = options.getAdminToken()
+    if (legacy) headers['X-Admin-Token'] = legacy
+    return headers
+  }
+
+  function hasAdminAuth(): boolean {
+    return Boolean(options.getAuthToken() || options.getAdminToken())
+  }
+
+  /** 管理面：JWT Bearer（主）+ X-Admin-Token（过渡兼容） */
   async function adminJson<T>(method: string, pathWithQuery: string,
                               body?: unknown): Promise<T> {
-    const token = options.getAdminToken()
-    if (!token) {
-      throw new ApiError(40101, '未配置 AdminToken，请先在「连接配置」录入')
+    if (!hasAdminAuth()) {
+      throw new ApiError(40101, '未登录，请先登录管理后台')
     }
     const response = await doFetch(pathWithQuery, {
       method,
-      headers: { 'X-Admin-Token': token, 'Content-Type': 'application/json' },
+      headers: { ...adminHeaders(), 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     })
+    if (response.status === 401) {
+      options.onUnauthorized?.()
+    }
     return unwrap<T>(response, doFetch)
   }
 
-  /** 管理面 multipart：手工构造（与 signedUpload 同法），X-Admin-Token 鉴权 */
-  async function adminUpload<T>(pathWithQuery: string, file: File): Promise<T> {
-    const token = options.getAdminToken()
-    if (!token) {
-      throw new ApiError(40101, '未配置 AdminToken，请先在「连接配置」录入')
+  /** 管理面 multipart：手工构造（与 signedUpload 同法），JWT/legacy 鉴权，支持表单字段 */
+  async function adminUpload<T>(pathWithQuery: string, file: File,
+                                fields?: Record<string, string>): Promise<T> {
+    if (!hasAdminAuth()) {
+      throw new ApiError(40101, '未登录，请先登录管理后台')
     }
     const boundary = '----skillplatform' + Date.now().toString(16) + Math.random().toString(16).slice(2)
     const encoder = new TextEncoder()
-    const parts: Uint8Array[] = [encoder.encode(
+    const parts: Uint8Array[] = []
+    for (const [name, value] of Object.entries(fields ?? {})) {
+      if (value === undefined || value === '') continue
+      parts.push(encoder.encode(
+        `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`))
+    }
+    parts.push(encoder.encode(
       `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${file.name}"\r\n`
-      + `Content-Type: ${file.type || 'application/octet-stream'}\r\n\r\n`)]
+      + `Content-Type: ${file.type || 'application/octet-stream'}\r\n\r\n`))
     parts.push(new Uint8Array(await file.arrayBuffer()))
     parts.push(encoder.encode(`\r\n--${boundary}--\r\n`))
     const body = concat(parts)
     const response = await doFetch(pathWithQuery, {
       method: 'POST',
-      headers: { 'X-Admin-Token': token,
+      headers: { ...adminHeaders(),
         'Content-Type': `multipart/form-data; boundary=${boundary}` },
       body,
+    })
+    if (response.status === 401) {
+      options.onUnauthorized?.()
+    }
+    return unwrap<T>(response, doFetch)
+  }
+
+  /** 登录请求（免鉴权端点，不走 adminHeaders） */
+  async function plainJson<T>(method: string, pathWithQuery: string, body?: unknown): Promise<T> {
+    const response = await doFetch(pathWithQuery, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
     })
     return unwrap<T>(response, doFetch)
   }
 
-  return { signedJson, signedUpload, adminJson, adminUpload }
+  return { signedJson, signedUpload, adminJson, adminUpload, plainJson }
 }
 
 function concat(chunks: Uint8Array[]): Uint8Array {

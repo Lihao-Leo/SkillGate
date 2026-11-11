@@ -2,15 +2,22 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
-import { gatewayApi, type ModelProviderView } from '../api/gateway'
+import { gatewayApi, type ModelCatalogEntry, type ModelProviderView } from '../api/gateway'
 
 const items = ref<ModelProviderView[]>([])
+const catalog = ref<ModelCatalogEntry[]>([])
 const loading = ref(false)
 const dialog = reactive({
   visible: false, editing: false,
   alias: '', provider: '', modelName: '', endpoint: '', apiKey: '', fallbackAlias: '',
   maxQps: 10, costPer1kInput: '', costPer1kOutput: '', costPerCall: '', status: 1,
 })
+
+/** 当前选中供应商的目录项（模型下拉 + endpoint 模板联动的数据源） */
+const catalogEntry = ref<ModelCatalogEntry | null>(null)
+/** 连通性测试状态（按 alias 测已存配置 / 按草稿测弹窗表单） */
+const testing = reactive({ alias: '', visible: false, loading: false,
+  ok: false as boolean | null, message: '', latencyMs: 0, httpStatus: 0, sample: '' })
 
 async function load() {
   loading.value = true
@@ -22,7 +29,22 @@ async function load() {
     loading.value = false
   }
 }
-onMounted(load)
+
+async function loadCatalog() {
+  try {
+    catalog.value = await gatewayApi.adminModelCatalog()
+  } catch { /* 目录拉取失败退化为手填 */ }
+}
+onMounted(() => { load(); loadCatalog() })
+
+function onProviderChange(provider: string) {
+  const entry = catalog.value.find(item => item.provider === provider) ?? null
+  catalogEntry.value = entry
+  if (entry && !dialog.editing) {
+    dialog.endpoint = entry.endpointHint
+    dialog.modelName = entry.models[0] ?? ''
+  }
+}
 
 function openCreate() {
   Object.assign(dialog, {
@@ -30,6 +52,7 @@ function openCreate() {
     apiKey: '', fallbackAlias: '', maxQps: 10, costPer1kInput: '', costPer1kOutput: '',
     costPerCall: '', status: 1,
   })
+  catalogEntry.value = null
 }
 
 function openEdit(row: ModelProviderView) {
@@ -40,6 +63,7 @@ function openEdit(row: ModelProviderView) {
     costPer1kInput: row.costPer1kInputTokens ?? '', costPer1kOutput: row.costPer1kOutputTokens ?? '',
     costPerCall: row.costPerCall ?? '', status: row.status,
   })
+  catalogEntry.value = catalog.value.find(item => item.provider === row.provider) ?? null
 }
 
 async function submit() {
@@ -60,6 +84,34 @@ async function submit() {
     await load()
   } catch (e) {
     ElMessage.error((e as Error).message)
+  }
+}
+
+/** 草稿连通性测试（弹窗内，不必先保存） */
+async function testDraft() {
+  testing.visible = true
+  testing.loading = true
+  testing.alias = ''
+  try {
+    const result = await gatewayApi.adminTestModelProvider({
+      endpoint: dialog.endpoint, modelName: dialog.modelName, apiKey: dialog.apiKey || undefined,
+    })
+    Object.assign(testing, { ...result, loading: false, alias: '' })
+  } catch (e) {
+    Object.assign(testing, { loading: false, ok: false, message: (e as Error).message })
+  }
+}
+
+/** 已存配置连通性测试（表格行操作） */
+async function testSaved(alias: string) {
+  testing.visible = true
+  testing.loading = true
+  testing.alias = alias
+  try {
+    const result = await gatewayApi.adminTestModelProvider({ alias })
+    Object.assign(testing, { ...result, loading: false })
+  } catch (e) {
+    Object.assign(testing, { loading: false, ok: false, message: (e as Error).message })
   }
 }
 
@@ -119,9 +171,11 @@ async function toggleStatus(row: ModelProviderView) {
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="160">
+      <el-table-column label="操作" width="210">
         <template #default="{ row }">
           <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
+          <el-button link type="success" size="small" :data-testid="`test-${row.alias}`"
+                     @click="testSaved(row.alias)">测试</el-button>
           <el-button link :type="row.status === 1 ? 'danger' : 'success'" size="small"
                      @click="toggleStatus(row)">{{ row.status === 1 ? '禁用' : '启用' }}</el-button>
           <el-button link type="danger" size="small" @click="remove(row.alias)"
@@ -139,13 +193,26 @@ async function toggleStatus(row: ModelProviderView) {
                   placeholder="如 llm-text（Skill 引用名）" />
       </el-form-item>
       <el-form-item label="供应商" required>
-        <el-input v-model="dialog.provider" placeholder="openai / anthropic / ..." />
+        <el-select v-model="dialog.provider" data-testid="provider-select" filterable
+                   placeholder="选择供应商（自动带出模型列表）" style="width: 100%"
+                   @change="onProviderChange">
+          <el-option v-for="entry in catalog" :key="entry.provider" :value="entry.provider"
+                     :label="`${entry.label}（${entry.provider}）`" />
+        </el-select>
       </el-form-item>
       <el-form-item label="模型名" required>
-        <el-input v-model="dialog.modelName" placeholder="gpt-4o-mini / ..." />
+        <el-select v-if="catalogEntry && catalogEntry.models.length"
+                   v-model="dialog.modelName" filterable allow-create default-first-option
+                   data-testid="model-select" placeholder="从目录选择或输入自定义模型名"
+                   style="width: 100%">
+          <el-option v-for="model in catalogEntry.models" :key="model" :value="model"
+                     :label="model" />
+        </el-select>
+        <el-input v-else v-model="dialog.modelName" placeholder="供应商侧模型名" />
       </el-form-item>
-      <el-form-item label="Endpoint">
-        <el-input v-model="dialog.endpoint" placeholder="API 端点地址" />
+      <el-form-item label="Endpoint" required>
+        <el-input v-model="dialog.endpoint" data-testid="provider-endpoint"
+                  :placeholder="catalogEntry?.endpointHint ?? 'API 端点地址（OpenAI 兼容）'" />
       </el-form-item>
       <el-form-item label="API Key">
         <el-input v-model="dialog.apiKey" type="password" show-password
@@ -158,18 +225,50 @@ async function toggleStatus(row: ModelProviderView) {
         <el-input-number v-model="dialog.maxQps" :min="1" />
       </el-form-item>
       <el-form-item label="成本/1k 输入">
-        <el-input v-model="dialog.costPer1kInput" placeholder="点数，如 0.01（可空）" />
+        <el-input v-model="dialog.costPer1kInput" placeholder="点数，如 0.01（用于执行明细费用折算）" />
       </el-form-item>
       <el-form-item label="成本/1k 输出">
-        <el-input v-model="dialog.costPer1kOutput" placeholder="点数，如 0.02（可空）" />
+        <el-input v-model="dialog.costPer1kOutput" placeholder="点数，如 0.02" />
       </el-form-item>
       <el-form-item label="状态">
         <el-switch v-model="dialog.status" :active-value="1" :inactive-value="0"
                    active-text="启用" inactive-text="禁用" />
       </el-form-item>
       <el-form-item>
+        <el-button data-testid="provider-test-draft" @click="testDraft">连通性测试</el-button>
         <el-button type="primary" @click="submit" data-testid="provider-submit">保存</el-button>
       </el-form-item>
     </el-form>
   </el-dialog>
+
+  <el-dialog v-model="testing.visible" title="连通性测试" width="520px"
+             data-testid="provider-test-dialog">
+    <div v-loading="testing.loading" style="min-height: 90px">
+      <template v-if="!testing.loading">
+        <el-result :icon="testing.ok ? 'success' : 'error'"
+                   :title="testing.ok ? '连通正常' : '连通失败'"
+                   :sub-title="testing.message">
+          <template #extra>
+            <div class="test-meta mono">
+              <span>延迟 {{ testing.latencyMs }}ms</span>
+              <span>HTTP {{ testing.httpStatus || '-' }}</span>
+            </div>
+            <p v-if="testing.sample" class="test-sample mono">{{ testing.sample }}</p>
+          </template>
+        </el-result>
+      </template>
+    </div>
+    <template #footer>
+      <el-button @click="testing.visible = false">关闭</el-button>
+    </template>
+  </el-dialog>
 </template>
+
+<style scoped>
+.test-meta { display: flex; gap: 16px; color: #475467; font-size: 13px; margin-bottom: 8px; }
+.test-sample {
+  text-align: left; max-height: 120px; overflow: auto;
+  background: #f6f8fb; border-radius: 8px; padding: 8px 12px; font-size: 12px;
+  white-space: pre-wrap; word-break: break-all; max-width: 420px;
+}
+</style>

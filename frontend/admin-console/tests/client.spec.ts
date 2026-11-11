@@ -12,6 +12,7 @@ describe('gateway 客户端', () => {
     const client = createGatewayClient({
       getCredentials: () => ({ appKey: 'sk-test-key', secret: 'sk-secret-test', adminToken: '' }),
       getAdminToken: () => null,
+      getAuthToken: () => null,
       fetchImpl: fetchImpl as unknown as typeof fetch,
     })
     const data = await client.signedJson('GET', '/api/v1/account/balance')
@@ -28,6 +29,7 @@ describe('gateway 客户端', () => {
     const client = createGatewayClient({
       getCredentials: () => ({ appKey: 'sk-test-key', secret: 'sk-secret-test', adminToken: '' }),
       getAdminToken: () => null,
+      getAuthToken: () => null,
       fetchImpl: fetchImpl as unknown as typeof fetch,
     })
     await client.signedJson('POST', '/api/v1/admin/credits/recharge',
@@ -43,6 +45,7 @@ describe('gateway 客户端', () => {
     const client = createGatewayClient({
       getCredentials: () => ({ appKey: 'sk-test-key', secret: 'sk-secret-test', adminToken: '' }),
       getAdminToken: () => null,
+      getAuthToken: () => null,
       fetchImpl: fetchImpl as unknown as typeof fetch,
     })
     const zip = new File([new Uint8Array([0x50, 0x4b, 0x03, 0x04, 1, 2, 3])], 'pkg.zip',
@@ -73,6 +76,7 @@ describe('gateway 客户端', () => {
   it('未配置凭证时抛 40101 引导提示', async () => {
     const client = createGatewayClient({
       getCredentials: () => null, getAdminToken: () => null,
+      getAuthToken: () => null,
       fetchImpl: vi.fn() as unknown as typeof fetch,
     })
     await expect(client.signedJson('GET', '/api/v1/skills')).rejects.toMatchObject({
@@ -86,6 +90,7 @@ describe('gateway 客户端', () => {
     const client = createGatewayClient({
       getCredentials: () => ({ appKey: 'k', secret: 's', adminToken: '' }),
       getAdminToken: () => null,
+      getAuthToken: () => null,
       fetchImpl: fetchImpl as unknown as typeof fetch,
     })
     await expect(client.signedJson('POST', '/api/v1/execute', {}))
@@ -98,6 +103,7 @@ describe('gateway 客户端', () => {
     const client = createGatewayClient({
       getCredentials: () => ({ appKey: 'k', secret: 's', adminToken: '' }),
       getAdminToken: () => 'admin-token-x',
+      getAuthToken: () => null,
       fetchImpl: fetchImpl as unknown as typeof fetch,
     })
     await client.adminJson('GET', '/api/v1/admin/app-keys?pageNo=1&pageSize=20')
@@ -109,6 +115,7 @@ describe('gateway 客户端', () => {
   it('admin 未配置 token 抛错；非 JSON 响应抛 ApiError(-1)', async () => {
     const client = createGatewayClient({
       getCredentials: () => null, getAdminToken: () => null,
+      getAuthToken: () => null,
       fetchImpl: vi.fn() as unknown as typeof fetch,
     })
     await expect(client.adminJson('GET', '/api/v1/admin/app-keys'))
@@ -117,10 +124,58 @@ describe('gateway 客户端', () => {
     const badClient = createGatewayClient({
       getCredentials: () => null,
       getAdminToken: () => 't',
+      getAuthToken: () => null,
       fetchImpl: vi.fn().mockResolvedValue(
         new Response('<html>502</html>', { status: 502 })) as unknown as typeof fetch,
     })
     await expect(badClient.adminJson('GET', '/api/v1/admin/app-keys'))
       .rejects.toMatchObject({ code: -1 })
+  })
+
+  it('adminJson：JWT 注入 Authorization: Bearer，与 legacy X-Admin-Token 并存', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({ code: 0, message: 'ok', data: {} }))
+    const client = createGatewayClient({
+      getCredentials: () => null,
+      getAdminToken: () => 'legacy-token',
+      getAuthToken: () => 'jwt-token',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+    await client.adminJson('GET', '/api/v1/admin/users')
+    const [, init] = fetchImpl.mock.calls[0]
+    expect(init.headers['Authorization']).toBe('Bearer jwt-token')
+    expect(init.headers['X-Admin-Token']).toBe('legacy-token')
+  })
+
+  it('adminJson：HTTP 401 触发 onUnauthorized（清会话跳登录）', async () => {
+    const onUnauthorized = vi.fn()
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({ code: 40101, message: '未登录', data: null }, 401))
+    const client = createGatewayClient({
+      getCredentials: () => null,
+      getAdminToken: () => null,
+      getAuthToken: () => 'expired-jwt',
+      onUnauthorized,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+    await expect(client.adminJson('GET', '/api/v1/admin/users'))
+      .rejects.toBeInstanceOf(ApiError)
+    expect(onUnauthorized).toHaveBeenCalledTimes(1)
+  })
+
+  it('plainJson：不带任何鉴权头（登录端点用）', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({ code: 0, message: 'ok', data: { token: 't' } }))
+    const client = createGatewayClient({
+      getCredentials: () => null,
+      getAdminToken: () => 'legacy-token',
+      getAuthToken: () => null,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+    await client.plainJson('POST', '/api/v1/admin/auth/login', { username: 'admin', password: 'x' })
+    const [, init] = fetchImpl.mock.calls[0]
+    expect(init.headers['Authorization']).toBeUndefined()
+    expect(init.headers['X-Admin-Token']).toBeUndefined()
+    expect(init.body).toBe('{"username":"admin","password":"x"}')
   })
 })

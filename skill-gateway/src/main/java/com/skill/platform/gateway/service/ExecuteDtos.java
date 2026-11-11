@@ -61,7 +61,17 @@ public final class ExecuteDtos {
             String timestamp) {
 
         @JsonInclude(JsonInclude.Include.NON_NULL)
-        public record ArtifactView(String artifactId, String type, String url, Long sizeBytes) {
+        public record ArtifactView(String artifactId, String type, String url, Long sizeBytes,
+                                   /** V2.1：MIME（worker 产物落库时按后缀推断；存量行为 octet-stream） */
+                                   String contentType,
+                                   /** 结构化类型（json/text/markdown/html）可在线预览 */
+                                   Boolean previewable) {
+        }
+
+        /** 产物内容预览响应（V2.1）：content 为 UTF-8 文本，truncated=超上限截断。 */
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        public record ArtifactContentView(String artifactId, String type, String contentType,
+                                          Long sizeBytes, String content, boolean truncated) {
         }
 
         @JsonInclude(JsonInclude.Include.NON_NULL)

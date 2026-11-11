@@ -3,13 +3,15 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Box, Key, Monitor, Wallet, Setting, Connection, Cpu, Collection, Tools,
-  Search, Bell, Sunny, Moon, DataLine,
+  Search, Bell, Sunny, Moon, DataLine, Warning, User as UserIcon,
 } from '@element-plus/icons-vue'
 import { useCredentialsStore } from './stores/credentials'
+import { useAuthStore } from './stores/auth'
 
 const route = useRoute()
 const router = useRouter()
 const creds = useCredentialsStore()
+const auth = useAuthStore()
 
 const activeMenu = computed(() => '/' + (route.path.split('/')[1] ?? 'executions'))
 
@@ -21,42 +23,56 @@ function toggleTheme() {
   localStorage.setItem('sg-theme', isDark.value ? 'dark' : 'light')
 }
 
-const menuGroups = [
+interface MenuItem { path: string; title: string; icon: unknown; perm?: string }
+interface MenuGroup { title: string; items: MenuItem[] }
+
+const menuGroups: MenuGroup[] = [
   {
     title: '运营',
     items: [
-      { path: '/executions', title: '执行监控', icon: Monitor },
-      { path: '/skills', title: 'Skill 管理', icon: Box },
+      { path: '/executions', title: '执行监控', icon: Monitor, perm: 'execution:read' },
+      { path: '/skills', title: 'Skill 管理', icon: Box, perm: 'skill:read' },
     ],
   },
   {
     title: '资产',
     items: [
-      { path: '/app-keys', title: 'AppKey 与账户', icon: Key },
+      { path: '/app-keys', title: 'AppKey 与账户', icon: Key, perm: 'key:read' },
       { path: '/account', title: '账户流水', icon: Wallet },
     ],
   },
   {
     title: '平台',
     items: [
-      { path: '/models', title: '模型与能力', icon: Cpu },
-      { path: '/kb', title: '知识库', icon: Collection },
-      { path: '/sysconfig', title: '系统配置', icon: Tools },
+      { path: '/models', title: '模型与能力', icon: Cpu, perm: 'model:read' },
+      { path: '/kb', title: '知识库', icon: Collection, perm: 'kb:manage' },
+      { path: '/alerts', title: '告警中心', icon: Warning, perm: 'alert:read' },
+      { path: '/sysconfig', title: '系统配置', icon: Tools, perm: 'sysconfig:read' },
     ],
   },
   {
     title: '系统',
     items: [
-      { path: '/connect', title: '连接配置', icon: Setting },
+      { path: '/users', title: '用户与角色', icon: UserIcon, perm: 'user:manage' },
+      { path: '/connect', title: '业务凭证', icon: Setting },
     ],
   },
 ]
 
-const userInitial = '运'
+/** 菜单按权限点过滤（SUPER_ADMIN 通配；未声明 perm 的菜单项登录即可见） */
+const visibleGroups = computed<MenuGroup[]>(() => menuGroups
+  .map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !item.perm || auth.hasPerm(item.perm)),
+  }))
+  .filter((group) => group.items.length > 0))
+
+const userInitial = computed(() => (auth.username || '运').slice(0, 1).toUpperCase())
 
 function logout() {
+  auth.clear()
   creds.clear()
-  router.push({ name: 'connect' })
+  router.push({ name: 'login' })
 }
 </script>
 
@@ -84,15 +100,16 @@ function logout() {
           <span class="dot" />
         </span>
         <span class="avatar">{{ userInitial }}</span>
-        <span class="user">{{ creds.appKeyReady ? '运营 · 管理员' : '未登录' }}</span>
-        <el-button v-if="creds.appKeyReady" link size="small" class="logout" @click="logout">退出</el-button>
+        <span class="user">{{ auth.loggedIn
+          ? `${auth.displayName} · ${auth.roleName}` : '未登录' }}</span>
+        <el-button v-if="auth.loggedIn" link size="small" class="logout" @click="logout">退出</el-button>
       </div>
     </header>
 
     <div class="body">
       <aside class="sidebar">
         <nav class="menu">
-          <template v-for="group in menuGroups" :key="group.title">
+          <template v-for="group in visibleGroups" :key="group.title">
             <div class="group-title">{{ group.title }}</div>
             <router-link v-for="item in group.items" :key="item.path" :to="item.path"
                          class="menu-item" :class="{ active: activeMenu === item.path }">

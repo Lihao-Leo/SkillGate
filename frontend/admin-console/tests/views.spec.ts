@@ -10,6 +10,11 @@ const { gatewayApi } = vi.hoisted(() => ({
     skillDetail: vi.fn(),
     setDefaultVersion: vi.fn(),
     updateSkillConfig: vi.fn(),
+    adminListSkills: vi.fn(),
+    adminSkillDetail: vi.fn(),
+    adminUploadSkill: vi.fn(),
+    adminSetDefaultVersion: vi.fn(),
+    adminReviewVersion: vi.fn(),
     adminListKeys: vi.fn(),
     adminResetSecret: vi.fn(),
     adminUpdateKeyStatus: vi.fn(),
@@ -24,6 +29,8 @@ import SkillsView from '../src/views/SkillsView.vue'
 import AppKeysView from '../src/views/AppKeysView.vue'
 import ConnectView from '../src/views/ConnectView.vue'
 import { useCredentialsStore } from '../src/stores/credentials'
+import { useAuthStore } from '../src/stores/auth'
+import { ElMessageBox } from 'element-plus'
 import { createRouter, createMemoryHistory } from 'vue-router'
 
 function mountView(view: typeof SkillsView) {
@@ -35,27 +42,33 @@ beforeEach(() => {
   localStorage.clear()
   setActivePinia(createPinia())
   useCredentialsStore().save({ appKey: 'sk-1', secret: 's', adminToken: 'adm' })
+  // SkillsView 的管理面按钮按权限渲染：默认以 SUPER_ADMIN 登录
+  useAuthStore().login({
+    token: 'jwt-test', username: 'admin', displayName: '管理员',
+    role: 'SUPER_ADMIN', roleName: '超级管理员', permissions: [],
+  })
 })
 
 describe('SkillsView', () => {
-  it('渲染列表并透传分页参数', async () => {
-    gatewayApi.listSkills.mockResolvedValue({
+  it('渲染列表并透传分页参数（admin 面跨租户）', async () => {
+    gatewayApi.adminListSkills.mockResolvedValue({
       total: 1, pageNo: 1, pageSize: 20,
       items: [{
-        skillCode: 'video-gen', name: '视频生成', description: 'd', visibility: 'PRIVATE',
-        defaultVersion: '1.0.0', status: 1, pricingConfig: null,
+        tenantId: 'admin-console', skillCode: 'video-gen', name: '视频生成', description: 'd',
+        visibility: 'PRIVATE', defaultVersion: '1.0.0', status: 1, pricingConfig: null,
       }],
     })
     const wrapper = mountView(SkillsView)
     await flushPromises()
-    expect(gatewayApi.listSkills).toHaveBeenCalledWith(1, 20)
+    expect(gatewayApi.adminListSkills).toHaveBeenCalledWith({
+      tenantId: undefined, skillCode: undefined, pageNo: 1, pageSize: 20 })
     expect(wrapper.find('[data-testid="skills-table"]').text()).toContain('video-gen')
     expect(wrapper.find('[data-testid="skills-table"]').text()).toContain('视频生成')
   })
 
-  it('上传表单：填写字段与 zip 后调 uploadSkill 并刷新列表', async () => {
-    gatewayApi.listSkills.mockResolvedValue({ total: 0, pageNo: 1, pageSize: 20, items: [] })
-    gatewayApi.uploadSkill.mockResolvedValue(
+  it('上传表单：填写字段与 zip 后调 adminUploadSkill 并刷新列表', async () => {
+    gatewayApi.adminListSkills.mockResolvedValue({ total: 0, pageNo: 1, pageSize: 20, items: [] })
+    gatewayApi.adminUploadSkill.mockResolvedValue(
       { version: '1.0.0', packageSha256: 'abc', packageSize: 10, status: 0, changelog: '', uploadedAt: '2026-09-15' })
     const wrapper = mountView(SkillsView)
     await flushPromises()
@@ -63,6 +76,7 @@ describe('SkillsView', () => {
     await wrapper.find('[data-testid="open-upload"]').trigger('click')
     await flushPromises()
 
+    await wrapper.find('[data-testid="upload-tenant"]').setValue('admin-console')
     await wrapper.find('[data-testid="upload-skillcode"]').setValue('video-gen')
     await wrapper.find('[data-testid="upload-version"]').setValue('1.0.0')
     await wrapper.find('[data-testid="upload-name"]').setValue('视频生成')
@@ -77,37 +91,39 @@ describe('SkillsView', () => {
     await wrapper.find('[data-testid="upload-submit"]').trigger('click')
     await flushPromises()
 
-    expect(gatewayApi.uploadSkill).toHaveBeenCalledTimes(1)
-    const [fields, file] = gatewayApi.uploadSkill.mock.calls[0]
-    expect(fields.skillCode).toBe('video-gen')
+    expect(gatewayApi.adminUploadSkill).toHaveBeenCalledTimes(1)
+    const [tenantId, skillCode, fields, file] = gatewayApi.adminUploadSkill.mock.calls[0]
+    expect(tenantId).toBe('admin-console')
+    expect(skillCode).toBe('video-gen')
     expect(fields.version).toBe('1.0.0')
     expect(fields.visibility).toBe('PRIVATE')
     // 逗号分隔自动转 JSON 数组（服务端要求合法 JSON）
     expect(fields.requiredAbilities).toBe(JSON.stringify(['llm.chat', 'video.generate']))
     expect((file as File).name).toBe('pkg.zip')
     // 上传成功后刷新列表
-    expect(gatewayApi.listSkills).toHaveBeenCalledTimes(2)
+    expect(gatewayApi.adminListSkills).toHaveBeenCalledTimes(2)
   })
 
-  it('详情抽屉：版本列表 + 设为默认回滚', async () => {
-    gatewayApi.listSkills.mockResolvedValue({
+  it('详情抽屉：版本列表 + 回滚确认后切默认版本', async () => {
+    gatewayApi.adminListSkills.mockResolvedValue({
       total: 1, pageNo: 1, pageSize: 20,
       items: [{
-        skillCode: 'video-gen', name: '视频生成', description: 'd', visibility: 'PRIVATE',
-        defaultVersion: '1.0.0', status: 1, pricingConfig: '{"model":"FREE"}',
+        tenantId: 'admin-console', skillCode: 'video-gen', name: '视频生成', description: 'd',
+        visibility: 'PRIVATE', defaultVersion: '1.0.0', status: 1, pricingConfig: '{"model":"FREE"}',
       }],
     })
-    gatewayApi.skillDetail.mockResolvedValue({
+    gatewayApi.adminSkillDetail.mockResolvedValue({
       skill: {
-        skillCode: 'video-gen', name: '视频生成', description: 'd', visibility: 'PRIVATE',
-        defaultVersion: '1.0.0', status: 1, pricingConfig: '{"model":"FREE"}',
+        tenantId: 'admin-console', skillCode: 'video-gen', name: '视频生成', description: 'd',
+        visibility: 'PRIVATE', defaultVersion: '1.0.0', status: 1, pricingConfig: '{"model":"FREE"}',
       },
       versions: [
         { version: '1.0.0', packageSha256: 'a', packageSize: 1, status: 1, changelog: 'init', uploadedAt: '2026-09-15' },
         { version: '1.1.0', packageSha256: 'b', packageSize: 2, status: 1, changelog: 'fix', uploadedAt: '2026-09-15' },
       ],
     })
-    gatewayApi.setDefaultVersion.mockResolvedValue({})
+    gatewayApi.adminSetDefaultVersion.mockResolvedValue({})
+    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never)
     const wrapper = mount(SkillsView, {
       global: { plugins: [ElementPlus] },
       attachTo: document.body,
@@ -118,15 +134,17 @@ describe('SkillsView', () => {
     await flushPromises()
     // 抽屉内容经 transition/teleport 渲染，等待一拍后从 document 查询
     await new Promise(resolve => setTimeout(resolve, 20))
-    expect(gatewayApi.skillDetail).toHaveBeenCalledWith('video-gen')
+    expect(gatewayApi.adminSkillDetail).toHaveBeenCalledWith('admin-console', 'video-gen')
     expect(document.body.innerHTML).toContain('1.1.0')
 
     const makeDefault = document.body
       .querySelector('[data-testid="make-default-1.1.0"]') as HTMLElement
     makeDefault.click()
     await flushPromises()
-    expect(gatewayApi.setDefaultVersion).toHaveBeenCalledWith('video-gen', '1.1.0')
+    expect(gatewayApi.adminSetDefaultVersion).toHaveBeenCalledWith(
+      'admin-console', 'video-gen', '1.1.0')
     wrapper.unmount()
+    vi.restoreAllMocks()
   })
 })
 

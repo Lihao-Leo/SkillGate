@@ -22,6 +22,7 @@ public enum ErrorCode {
     BILLING_VALIDATION_FAILED(40202, 402, "计费校验失败"),
 
     FORBIDDEN(40301, 403, "无权限（callbackUrl 不在白名单 / 素材跨租户或不可用）"),
+    PERMISSION_DENIED(40302, 403, "无该操作权限（角色权限点不足）"),
 
     RESOURCE_NOT_FOUND(40401, 404, "资源不存在"),
 

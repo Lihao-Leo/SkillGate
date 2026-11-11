@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 
 from ..adapters.k8s import JOB_SUCCEEDED, SandboxPort
@@ -16,14 +17,18 @@ from ..adapters.kv import KvPort
 from ..adapters.mq import MqPort
 from ..config import Settings
 from ..domain import Execution, RunResult
+from . import alert_rules
 from .orchestrator import Orchestrator
+
+logger = logging.getLogger(__name__)
 
 MISSING_STREAK_KEY = "watchdog:missing:{task_id}"
 
 
 class Watchdog:
     def __init__(self, orchestrator: Orchestrator, sandbox: SandboxPort, kv: KvPort,
-                 mq: MqPort, settings: Settings, events=None, notifier=None, alert_config=None):
+                 mq: MqPort, settings: Settings, events=None, notifier=None, alert_config=None,
+                 alert_record_reporter=None):
         self._orchestrator = orchestrator
         self._sandbox = sandbox
         self._kv = kv
@@ -32,6 +37,7 @@ class Watchdog:
         self._events = events
         self._notifier = notifier
         self._alert_config = alert_config
+        self._alert_records = alert_record_reporter
         self._executions = orchestrator._executions  # noqa: SLF001 - 同模块协作
 
     def reconcile(self) -> None:
@@ -42,25 +48,47 @@ class Watchdog:
         self._handle_cancelling()
 
     def _alert_long_running(self) -> None:
-        """RUNNING 超过阈值告警一次（统一配置 alert.running-seconds>0 时生效，Redis 去重）。"""
-        threshold = (self._alert_config.running_seconds()
-                     if self._alert_config is not None else self._settings.alert_running_seconds)
-        if threshold <= 0 or self._notifier is None:
+        """RUNNING 超阈值告警（V2.1 规则化：gateway 下发规则；无规则时 legacy
+        alert.running-seconds 阈值兜底，行为与 V2.0 一致）。每任务每规则去重一次。"""
+        rules = alert_rules.effective_rules(self._alert_config, self._settings)
+        if not rules or self._notifier is None:
             return
         for execution in self._executions.running():
             if not execution.started_at:
                 continue
             elapsed = (datetime.now() - execution.started_at).total_seconds()
-            if elapsed < threshold:
+            matched = alert_rules.match_rules(
+                rules, alert_rules.RULE_RUNNING_TIMEOUT, execution.skill_code, elapsed)
+            if not matched:
                 continue
-            self._alert(
-                f"⏰ 任务长时间运行 已 {elapsed / 60:.0f} 分钟 "
-                f"task={execution.task_id} skill={execution.skill_code} "
-                f"租户={execution.tenant_id} timeout={execution.timeout_seconds}s "
-                f"（可在管理台强制终止，终止按已发生用量结算）",
-                dedup_key=f"{execution.task_id}:longrun")
+            title = f"任务长时间运行：{execution.skill_code}（{elapsed / 60:.0f} 分钟）"
+            content = (f"⏰ 任务长时间运行 已 {elapsed / 60:.0f} 分钟 "
+                       f"task={execution.task_id} skill={execution.skill_code} "
+                       f"租户={execution.tenant_id} timeout={execution.timeout_seconds}s "
+                       f"（可在管理台强制终止，终止按已发生用量结算）")
+            for rule in matched:
+                self._alert(content, dedup_key=f"{execution.task_id}:{rule.get('ruleCode')}",
+                            ttl_seconds=int(rule.get("dedupWindowSeconds") or 86400))
+            self._record_alerts(matched, execution, title, content,
+                                {"elapsedSeconds": int(elapsed),
+                                 "timeoutSeconds": execution.timeout_seconds})
 
-    def _alert(self, text: str, dedup_key: str | None = None) -> None:
+    def _record_alerts(self, rules: list[dict], execution, title: str, content: str,
+                       detail: dict) -> None:
+        """命中的规则逐条落库（gateway /internal/alert-records）；上报器缺省静默跳过。"""
+        if self._alert_records is None:
+            return
+        for rule in rules:
+            try:
+                self._alert_records.report(alert_rules.build_record(
+                    rule, execution.task_id, execution.skill_code, execution.tenant_id,
+                    title, content, detail, notified=True,
+                    occurred_at=datetime.now().isoformat(timespec="milliseconds")))
+            except Exception:  # noqa: BLE001 - 观测不阻塞看门狗
+                logger.warning("alert record report failed: task=%s rule=%s",
+                               execution.task_id, rule.get("ruleCode"))
+
+    def _alert(self, text: str, dedup_key: str | None = None, ttl_seconds: int = 86400) -> None:
         """看门狗侧告警（与 orchestrator._alert 同语义）：统一配置热下发 + 去重 + no-op。"""
         if self._alert_config is not None and self._notifier is not None:
             try:
@@ -74,13 +102,14 @@ class Watchdog:
                 flag = f"task:alerted:{dedup_key}"
                 if self._kv.get(flag):
                     return
-                self._kv.set(flag, "1", ttl_seconds=86400)
+                self._kv.set(flag, "1", ttl_seconds=ttl_seconds)
             self._notifier.send_text(text)
         except Exception:  # noqa: BLE001 - 告警不阻塞看门狗
             logger.warning("watchdog alert failed: %s", dedup_key)
 
     def _watchdog_event(self, execution, action: str, detail: dict) -> None:
-        """上报 WATCHDOG 干预事件 + 飞书告警（看门狗干预=成本/健康异常信号）。"""
+        """上报 WATCHDOG 干预事件 + 告警（V2.1 规则化：WATCHDOG_INTERVENTION 规则；
+        REQUEUE 属例行重投不告警）。"""
         if self._events is not None:
             try:
                 from ..telemetry import current_trace_id
@@ -98,14 +127,20 @@ class Watchdog:
                 })
             except Exception:  # noqa: BLE001
                 pass
-        # 仅对成本/健康异常类干预告警；REQUEUE 属例行重投不告警
-        if self._notifier is not None and action == "FAIL_STUCK":
-            try:
-                self._notifier.send_text(
-                    f"🛑 看门狗干预 [{action}] task={execution.task_id} "
-                    f"skill={execution.skill_code} 租户={execution.tenant_id}")
-            except Exception:  # noqa: BLE001 - 告警不阻塞看门狗
-                pass
+        if self._notifier is None or action != "FAIL_STUCK":
+            return
+        rules = alert_rules.match_rules(
+            alert_rules.effective_rules(self._alert_config, self._settings),
+            alert_rules.RULE_WATCHDOG_INTERVENTION, execution.skill_code, 1)
+        if not rules:
+            return
+        title = f"看门狗干预：{execution.skill_code}（{action}）"
+        content = (f"🛑 看门狗干预 [{action}] task={execution.task_id} "
+                   f"skill={execution.skill_code} 租户={execution.tenant_id}")
+        for rule in rules:
+            self._alert(content, dedup_key=f"{execution.task_id}:{rule.get('ruleCode')}",
+                        ttl_seconds=int(rule.get("dedupWindowSeconds") or 86400))
+        self._record_alerts(rules, execution, title, content, dict(detail, action=action))
 
     # ------------------------------------------------------------------
     # PENDING 段

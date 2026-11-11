@@ -2,6 +2,8 @@ package com.skill.platform.gateway.controller;
 
 import com.skill.platform.gateway.billing.BillingViews.RechargeResult;
 import com.skill.platform.gateway.common.ApiResponse;
+import com.skill.platform.gateway.security.Permissions;
+import com.skill.platform.gateway.security.RequirePermission;
 import com.skill.platform.gateway.service.AppKeyAdminService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -11,9 +13,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -21,8 +20,8 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.Map;
 
 /**
- * 管理侧接口（§5.7 / §10.2）：充值平台（签发 / 入账 / key 管理）与运营后台（列表 / 禁用启用）调用，
- * X-Admin-Token + 内网可达。
+ * 管理侧接口（§5.7 / §10.2）：充值平台（签发 / 入账 / key 管理）与运营后台（列表 / 禁用启用）调用。
+ * V2.1 起双通道鉴权（JWT 权限点优先，legacy X-Admin-Token 兜底视为超管），各端点按权限点分权。
  */
 @RestController
 @RequestMapping("/api/v1/admin")
@@ -37,18 +36,22 @@ public class AdminController {
     private final com.skill.platform.gateway.service.AdminOpsService adminOpsService;
     private final com.skill.platform.gateway.service.ExecutionQueryService executionQueryService;
     private final com.skill.platform.gateway.service.AlertConfigService alertConfigService;
+    private final com.skill.platform.gateway.service.ModelCallCollectorService modelCallCollectorService;
+    private final com.skill.platform.gateway.service.ModelCatalog modelCatalog;
 
     // ------------------------------------------------------------------
     // 模型与能力（§10.1）
     // ------------------------------------------------------------------
 
     @GetMapping("/model-providers")
+    @RequirePermission(Permissions.MODEL_READ)
     public ApiResponse<java.util.List<Map<String, Object>>> listModelProviders() {
         return ApiResponse.ok(modelProviderAdminService.list());
     }
 
     /** 按 alias upsert；apiKey 仅写入（AES），任何响应不回显明文 */
     @PostMapping("/model-providers")
+    @RequirePermission(Permissions.MODEL_MANAGE)
     public ApiResponse<Map<String, Object>> upsertModelProvider(@RequestBody Map<String, String> request) {
         return ApiResponse.ok(modelProviderAdminService.upsert(
                 request.get("alias"), request.get("provider"), request.get("modelName"),
@@ -60,16 +63,35 @@ public class AdminController {
     }
 
     @DeleteMapping("/model-providers/{alias}")
+    @RequirePermission(Permissions.MODEL_MANAGE)
     public ApiResponse<Void> deleteModelProvider(@PathVariable String alias) {
         modelProviderAdminService.delete(alias);
         return ApiResponse.ok();
     }
 
     @PutMapping("/model-providers/{alias}/status")
+    @RequirePermission(Permissions.MODEL_MANAGE)
     public ApiResponse<Map<String, Object>> modelProviderStatus(
             @PathVariable String alias, @RequestBody Map<String, Object> request) {
         return ApiResponse.ok(modelProviderAdminService.updateStatus(alias,
                 Integer.parseInt(String.valueOf(request.get("status")))));
+    }
+
+    /** 模型目录（V2.1 前端下拉数据源：供应商 → endpoint 模板 + 常见模型列表） */
+    @GetMapping("/model-catalog")
+    @RequirePermission(Permissions.MODEL_READ)
+    public ApiResponse<java.util.List<Map<String, Object>>> modelCatalog() {
+        return ApiResponse.ok(modelCatalog.catalog());
+    }
+
+    /** 连通性测试（V2.1）：{alias} 按已存配置测，或草稿 {endpoint,modelName,apiKey} 直测 */
+    @PostMapping("/model-providers/test")
+    @RequirePermission(Permissions.MODEL_MANAGE)
+    public ApiResponse<Map<String, Object>> testModelProvider(
+            @RequestBody Map<String, String> request) {
+        return ApiResponse.ok(modelProviderAdminService.testConnectivity(
+                request.get("alias"), request.get("endpoint"), request.get("modelName"),
+                request.get("apiKey")));
     }
 
     // ------------------------------------------------------------------
@@ -77,29 +99,34 @@ public class AdminController {
     // ------------------------------------------------------------------
 
     @GetMapping("/kbs")
+    @RequirePermission(Permissions.KB_MANAGE)
     public ApiResponse<java.util.List<Map<String, Object>>> listKbs() {
         return ApiResponse.ok(kbAdminService.listKbs());
     }
 
     @PostMapping("/kbs")
+    @RequirePermission(Permissions.KB_MANAGE)
     public ApiResponse<Map<String, Object>> createKb(@RequestBody Map<String, String> request) {
         return ApiResponse.ok(kbAdminService.createKb(
                 request.get("tenantId"), request.get("name"), request.get("embeddingAlias")));
     }
 
     @DeleteMapping("/kbs/{kbId}")
+    @RequirePermission(Permissions.KB_MANAGE)
     public ApiResponse<Void> deleteKb(@PathVariable String kbId) {
         kbAdminService.deleteKb(kbId);
         return ApiResponse.ok();
     }
 
     @GetMapping("/kbs/{kbId}/documents")
+    @RequirePermission(Permissions.KB_MANAGE)
     public ApiResponse<java.util.List<Map<String, Object>>> listDocuments(@PathVariable String kbId) {
         return ApiResponse.ok(kbAdminService.listDocuments(kbId));
     }
 
     /** 文档登记：multipart 文本文件，原文落 OSS 私有桶，状态=待入库 */
     @PostMapping(value = "/kbs/{kbId}/documents", consumes = "multipart/form-data")
+    @RequirePermission(Permissions.KB_MANAGE)
     public ApiResponse<Map<String, Object>> addDocument(
             @PathVariable String kbId,
             @RequestParam("file") MultipartFile file) throws java.io.IOException {
@@ -109,12 +136,14 @@ public class AdminController {
 
     /** 入库：分块；Milvus 启用时向量化置已入库，未启用明确返回 indexed=false */
     @PostMapping("/kbs/{kbId}/documents/{docId}/ingest")
+    @RequirePermission(Permissions.KB_MANAGE)
     public ApiResponse<Map<String, Object>> ingestDocument(
             @PathVariable String kbId, @PathVariable String docId) {
         return ApiResponse.ok(kbAdminService.ingest(kbId, docId));
     }
 
     @DeleteMapping("/kbs/{kbId}/documents/{docId}")
+    @RequirePermission(Permissions.KB_MANAGE)
     public ApiResponse<Void> deleteDocument(@PathVariable String kbId, @PathVariable String docId) {
         kbAdminService.deleteDocument(kbId, docId);
         return ApiResponse.ok();
@@ -129,11 +158,13 @@ public class AdminController {
     // ------------------------------------------------------------------
 
     @GetMapping("/alert-config")
+    @RequirePermission(Permissions.ALERT_READ)
     public ApiResponse<com.skill.platform.gateway.service.AlertConfigService.AlertConfig> alertConfig() {
         return ApiResponse.ok(alertConfigService.get());
     }
 
     @PutMapping("/alert-config")
+    @RequirePermission(Permissions.ALERT_MANAGE)
     public ApiResponse<com.skill.platform.gateway.service.AlertConfigService.AlertConfig> saveAlertConfig(
             @RequestBody com.skill.platform.gateway.service.AlertConfigService.AlertConfig config) {
         alertConfigService.save(config);
@@ -142,16 +173,19 @@ public class AdminController {
 
     /** 发送测试消息到当前已保存的 webhook（服务端代发，运营保存后立即可验证连通性） */
     @PostMapping("/alert-config/test")
+    @RequirePermission(Permissions.ALERT_MANAGE)
     public ApiResponse<Map<String, Object>> testAlertConfig() {
         return ApiResponse.ok(alertConfigService.sendTest());
     }
 
     @GetMapping("/sys-config")
+    @RequirePermission(Permissions.SYSCONFIG_READ)
     public ApiResponse<Map<String, String>> sysConfig() {
         return ApiResponse.ok(sysConfigService.all());
     }
 
     @PutMapping("/sys-config")
+    @RequirePermission(Permissions.SYSCONFIG_MANAGE)
     public ApiResponse<Map<String, String>> updateSysConfig(@RequestBody Map<String, String> request) {
         for (Map.Entry<String, String> entry : request.entrySet()) {
             sysConfigService.put(entry.getKey(), entry.getValue(), "运营后台设置");
@@ -164,13 +198,17 @@ public class AdminController {
     // ------------------------------------------------------------------
 
     @GetMapping("/metrics/dashboard")
+    @RequirePermission(Permissions.METRICS_READ)
     public ApiResponse<Map<String, Object>> metricsDashboard(
-            @RequestParam(name = "hours", defaultValue = "24") int hours) {
-        return ApiResponse.ok(metricsService.dashboard(Math.min(Math.max(hours, 1), 720)));
+            @RequestParam(name = "hours", defaultValue = "24") int hours,
+            @RequestParam(name = "topN", defaultValue = "5") int topN) {
+        return ApiResponse.ok(metricsService.dashboard(Math.min(Math.max(hours, 1), 720),
+                Math.min(Math.max(topN, 1), 50)));
     }
 
     /** 最近任务列表（全平台轻量行）：hours/status/skillCode/tenantId/onlyFailed 筛选 */
     @GetMapping("/executions")
+    @RequirePermission(Permissions.EXECUTION_READ)
     public ApiResponse<com.baomidou.mybatisplus.extension.plugins.pagination.Page<Map<String, Object>>> listExecutions(
             @RequestParam(name = "hours", defaultValue = "24") int hours,
             @RequestParam(required = false) String status,
@@ -188,6 +226,7 @@ public class AdminController {
 
     /** 全平台任务详情（后管执行监控）：无租户过滤，视图与租户侧同构（含产物预签名/billing 块） */
     @GetMapping("/executions/{taskId}")
+    @RequirePermission(Permissions.EXECUTION_READ)
     public ApiResponse<com.skill.platform.gateway.service.ExecuteDtos.ExecutionView> adminExecution(
             @PathVariable String taskId) {
         return ApiResponse.ok(executionQueryService.getForAdmin(taskId));
@@ -195,6 +234,7 @@ public class AdminController {
 
     /** 管理台强制终止（RUNNING/PENDING → 终止并按已发生用量结算/退款） */
     @PostMapping("/executions/{taskId}/force-cancel")
+    @RequirePermission(Permissions.EXECUTION_MANAGE)
     public ApiResponse<com.skill.platform.gateway.service.ExecuteDtos.CancelResult> forceCancel(
             @PathVariable String taskId) {
         return ApiResponse.ok(executionQueryService.forceCancelForAdmin(taskId));
@@ -202,12 +242,14 @@ public class AdminController {
 
     /** 受理入参 JSON（后管排查用）：instructions/materials/context 全量原文 */
     @GetMapping("/executions/{taskId}/input")
+    @RequirePermission(Permissions.EXECUTION_READ)
     public ApiResponse<Object> executionInput(@PathVariable String taskId) {
         return ApiResponse.ok(executionQueryService.getInputForAdmin(taskId));
     }
 
     /** 任务执行事件链（技术方案 v2.0 §1.6）：按 seq 升序，detail 已解析 */
     @GetMapping("/executions/{taskId}/events")
+    @RequirePermission(Permissions.EXECUTION_READ)
     public ApiResponse<java.util.List<Map<String, Object>>> executionEvents(
             @PathVariable String taskId) {
         return ApiResponse.ok(adminOpsService.executionEvents(taskId));
@@ -215,23 +257,27 @@ public class AdminController {
 
     /** 异常处理台·重发：按回调契约重建 body 投 skill-callback-retry */
     @PostMapping("/executions/{taskId}/callback-resend")
+    @RequirePermission(Permissions.EXECUTION_MANAGE)
     public ApiResponse<Map<String, Object>> resendCallback(@PathVariable String taskId) {
         return ApiResponse.ok(adminOpsService.resendCallback(taskId));
     }
 
     /** 异常处理台·放弃：callback_status → GIVE_UP（不再补投） */
     @PostMapping("/executions/{taskId}/callback-giveup")
+    @RequirePermission(Permissions.EXECUTION_MANAGE)
     public ApiResponse<Map<String, Object>> giveUpCallback(@PathVariable String taskId) {
         return ApiResponse.ok(adminOpsService.giveUpCallback(taskId));
     }
 
     @GetMapping("/metrics/overview")
+    @RequirePermission(Permissions.METRICS_READ)
     public ApiResponse<Map<String, Object>> metricsOverview() {
         return ApiResponse.ok(metricsService.overview());
     }
 
     /** 签发 AppKey + AppSecret（充值成功后 / 首次购买）；secret 明文仅此一次返回 */
     @PostMapping("/app-keys")
+    @RequirePermission(Permissions.KEY_MANAGE)
     public ApiResponse<Map<String, Object>> issueKey(@RequestBody Map<String, String> request) {
         return ApiResponse.ok(appKeyAdminService.issue(
                 request.get("tenantId"),
@@ -241,6 +287,7 @@ public class AdminController {
 
     /** key 列表（标识 / quota / 状态；完整 secret 永不出库） */
     @GetMapping("/app-keys")
+    @RequirePermission(Permissions.KEY_READ)
     public ApiResponse<Map<String, Object>> listKeys(
             @RequestParam(required = false) String tenantId,
             @RequestParam(defaultValue = "1") int pageNo,
@@ -250,12 +297,14 @@ public class AdminController {
 
     /** AppSecret 重置=轮换：旧值立即失效，新值仅此一次返回 */
     @PostMapping("/app-keys/{appKeyId}/reset-secret")
+    @RequirePermission(Permissions.KEY_MANAGE)
     public ApiResponse<Map<String, String>> resetSecret(@PathVariable String appKeyId) {
         return ApiResponse.ok(appKeyAdminService.resetSecret(appKeyId));
     }
 
     /** 禁用（0）/ 启用（1） */
     @PutMapping("/app-keys/{appKeyId}/status")
+    @RequirePermission(Permissions.KEY_MANAGE)
     public ApiResponse<Map<String, Object>> updateStatus(@PathVariable String appKeyId,
                                                          @RequestBody Map<String, Object> request) {
         int status = Integer.parseInt(String.valueOf(request.get("status")));
@@ -264,10 +313,31 @@ public class AdminController {
 
     /** 点数入账（recharge-service 支付成功后调用；orderNo 幂等，重复调用返回已入账流水） */
     @PostMapping("/credits/recharge")
+    @RequirePermission(Permissions.KEY_MANAGE)
     public ApiResponse<RechargeResult> recharge(@RequestBody Map<String, Object> request) {
         String appKeyId = String.valueOf(request.get("appKeyId"));
         long points = Long.parseLong(String.valueOf(request.get("points")));
         String orderNo = String.valueOf(request.get("orderNo"));
         return ApiResponse.ok(appKeyAdminService.recharge(appKeyId, points, orderNo));
+    }
+
+    // ------------------------------------------------------------------
+    // V2.1：模型调用明细 + 产物在线预览
+    // ------------------------------------------------------------------
+
+    /** 任务内逐次模型调用明细（V2.1 执行抽屉）：含 prompt/completion 细分与费率折算点数 */
+    @GetMapping("/executions/{taskId}/model-calls")
+    public ApiResponse<java.util.List<com.skill.platform.gateway.dal.entity.ModelCall>> modelCalls(
+            @PathVariable String taskId,
+            @RequestParam(name = "limit", defaultValue = "100") int limit) {
+        return ApiResponse.ok(modelCallCollectorService.listByTask(taskId, limit));
+    }
+
+    /** 结构化产物在线预览（json/text/markdown/html；超上限截断 truncated=true） */
+    @GetMapping("/executions/{taskId}/artifacts/{artifactId}/content")
+    public ApiResponse<com.skill.platform.gateway.service.ExecuteDtos.ExecutionView.ArtifactContentView> artifactContent(
+            @PathVariable String taskId,
+            @PathVariable String artifactId) {
+        return ApiResponse.ok(executionQueryService.getArtifactContentForAdmin(taskId, artifactId));
     }
 }

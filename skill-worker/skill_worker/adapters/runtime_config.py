@@ -53,6 +53,11 @@ class AlertConfigClient:
         """是否有可用 webhook（远端或 env 兜底），供调用方判断 no-op。"""
         return bool(self.webhook_url())
 
+    def rules(self) -> list[dict]:
+        """告警规则列表（V2.1；gateway 未升级时键缺失 → 空列表走 legacy 阈值）。"""
+        value = self._load().get("rules")
+        return value if isinstance(value, list) else []
+
     def refresh_into(self, notifier) -> None:
         """把最新配置应用到通知器（webhook/secret）；空值不覆盖已有值。"""
         notifier.configure(self.webhook_url(), self.secret())

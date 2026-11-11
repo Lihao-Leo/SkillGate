@@ -46,6 +46,11 @@ public class ExecutionQueryService {
     private final ObjectStorage objectStorage;
     private final KvStore kv;
 
+    /** 产物在线预览字节上限（application.yml skill-platform.admin.artifact-preview-max-bytes） */
+    @org.springframework.beans.factory.annotation.Value(
+            "${skill-platform.admin.artifact-preview-max-bytes:262144}")
+    private int previewMaxBytes;
+
     public ExecutionView get(CallerContext caller, String taskId) {
         Execution execution = loadOwned(caller, taskId);
         if (Execution.isTerminal(execution.getStatus())) {
@@ -218,7 +223,9 @@ public class ExecutionQueryService {
                         a.getArtifactId(),
                         a.getType(),
                         objectStorage.presignGet(a.getOssKey(), ARTIFACT_URL_TTL).url(),
-                        a.getFileSize()))
+                        a.getFileSize(),
+                        a.getContentType(),
+                        previewableOf(a)))
                 .toList();
         ExecutionView view = new ExecutionView(
                 execution.getTaskId(),
@@ -240,6 +247,44 @@ public class ExecutionQueryService {
                         : execution.getFinishedAt().toString());
         kv.set(cacheKey, JsonCodec.write(view), TERMINAL_CACHE_TTL);
         return view;
+    }
+
+    /** 结构化产物判定：json/text/markdown/html 可在线预览（worker 存量行为 octet-stream 时按 type 兜底）。 */
+    private static boolean previewableOf(Artifact artifact) {
+        String type = artifact.getType() == null ? "" : artifact.getType().toLowerCase();
+        String contentType = artifact.getContentType() == null ? "" : artifact.getContentType().toLowerCase();
+        return type.equals("json") || type.equals("text") || type.equals("markdown") || type.equals("html")
+                || contentType.contains("json") || contentType.startsWith("text/");
+    }
+
+    /**
+     * 产物在线预览（管理面，execution:read）：结构化文本产物读 OSS 返回 UTF-8 内容；
+     * 超 artifact-preview-max-bytes 截断（truncated=true，前端提示走下载）。
+     */
+    public ExecutionView.ArtifactContentView getArtifactContentForAdmin(String taskId,
+                                                                        String artifactId) {
+        Artifact artifact = artifactMapper.selectOne(new LambdaQueryWrapper<Artifact>()
+                .eq(Artifact::getArtifactId, artifactId)
+                .eq(Artifact::getTaskId, taskId)
+                .last("LIMIT 1"));
+        if (artifact == null) {
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "产物不存在: " + artifactId);
+        }
+        if (!previewableOf(artifact)) {
+            throw new BizException(ErrorCode.PARAM_INVALID,
+                    "非结构化产物（" + artifact.getType() + "）不支持在线预览，请走下载链接");
+        }
+        byte[] bytes = objectStorage.get(artifact.getOssKey());
+        int maxBytes = previewMaxBytes;
+        boolean truncated = bytes.length > maxBytes;
+        byte[] effective = truncated ? java.util.Arrays.copyOf(bytes, maxBytes) : bytes;
+        return new ExecutionView.ArtifactContentView(
+                artifact.getArtifactId(),
+                artifact.getType(),
+                artifact.getContentType() == null ? "text/plain" : artifact.getContentType(),
+                artifact.getFileSize(),
+                new String(effective, java.nio.charset.StandardCharsets.UTF_8),
+                truncated);
     }
 
     /**

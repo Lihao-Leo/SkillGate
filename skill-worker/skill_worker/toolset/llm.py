@@ -61,8 +61,16 @@ class LlmClient:
         if status != 200 or "choices" not in payload:
             raise RuntimeError(f"llm chat failed: HTTP {status} {payload.get('error', '')}")
         usage = payload.get("usage") or {}
-        self._usage.report_llm(int(usage.get("prompt_tokens", 0)),
-                               int(usage.get("completion_tokens", 0)))
+        prompt_tokens = int(usage.get("prompt_tokens", 0))
+        completion_tokens = int(usage.get("completion_tokens", 0))
+        self._usage.report_llm(prompt_tokens, completion_tokens)
+        # V2.1：逐次明细落工作区（scheduler collect 通道上收 → gateway model_call 表）
+        from .usage import record_model_call
+        record_model_call({
+            "kind": "chat", "alias": model, "model": (payload.get("model") or ""),
+            "prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens,
+            "status": "OK",
+        })
         message = payload["choices"][0].get("message") or {}
         # 思考模型兼容（GLM-5/DeepSeek-R1 等）：content 空时回退 reasoning_content
         return message.get("content") or message.get("reasoning_content") or ""

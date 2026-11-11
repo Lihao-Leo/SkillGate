@@ -66,6 +66,22 @@ public class SkillService {
                                           String requiredAbilities, String outputConfig,
                                           String pricingConfig, String invocationSpec,
                                           String changelog, boolean publish, byte[] zipBytes) {
+        return upload(caller.tenantId(), caller.appKeyId(), skillCode, version, name, description,
+                visibility, requiredAbilities, outputConfig, pricingConfig, invocationSpec,
+                changelog, publish, zipBytes);
+    }
+
+    /**
+     * 上传核心（tenant 显式）：业务面（HMAC CallerContext）与管理面（AdminSkill，operator=admin
+     * username）共用；V2.1 起管理面上传纳入 skill:upload 权限管控。
+     */
+    @Transactional
+    public SkillDetail.VersionView upload(String tenantId, String operator, String skillCode,
+                                          String version, String name, String description,
+                                          String visibility, String requiredAbilities,
+                                          String outputConfig, String pricingConfig,
+                                          String invocationSpec, String changelog,
+                                          boolean publish, byte[] zipBytes) {
         if (skillCode == null || skillCode.isBlank() || !VERSION_PATTERN.matcher(version).matches()) {
             throw new BizException(ErrorCode.PARAM_INVALID,
                     "skillCode 不能为空且 version 需为语义化版本（如 1.2.0）");
@@ -86,12 +102,12 @@ public class SkillService {
         String kind = detectKind(zipBytes);
 
         Skill skill = skillMapper.selectOne(new LambdaQueryWrapper<Skill>()
-                .eq(Skill::getTenantId, caller.tenantId())
+                .eq(Skill::getTenantId, tenantId)
                 .eq(Skill::getSkillCode, skillCode)
                 .last("LIMIT 1"));
         if (skill == null) {
             skill = new Skill();
-            skill.setTenantId(caller.tenantId());
+            skill.setTenantId(tenantId);
             skill.setSkillCode(skillCode);
             skill.setName(name == null || name.isBlank() ? skillCode : name);
             skill.setDescription(description);
@@ -102,7 +118,7 @@ public class SkillService {
             skill.setInvocationSpec(invocationSpec);
             skill.setStatus(1);
             skill.setKind(kind);
-            skill.setCreatedBy(caller.appKeyId());
+            skill.setCreatedBy(operator);
             syncTelemetryToken(skill);
             skillMapper.insert(skill);
         } else {
@@ -141,7 +157,7 @@ public class SkillService {
                     "版本已存在（版本不覆盖，请递增版本号）: " + version);
         }
 
-        String ossKey = "skill/%s/%s/%s/skill.zip".formatted(caller.tenantId(), skillCode, version);
+        String ossKey = "skill/%s/%s/%s/skill.zip".formatted(tenantId, skillCode, version);
         objectStorage.put(ossKey, zipBytes, "application/zip");
         String ossUrl = objectStorage.publicUrl(ossKey);
 
@@ -155,18 +171,19 @@ public class SkillService {
         skillVersion.setPackageSize((long) zipBytes.length);
         skillVersion.setChangelog(changelog);
         skillVersion.setStatus(publish ? SkillVersion.STATUS_PUBLISHED : SkillVersion.STATUS_UPLOADED);
-        skillVersion.setUploadedBy(caller.appKeyId());
+        skillVersion.setUploadedBy(operator);
         skillVersionMapper.insert(skillVersion);
 
         if (publish && (skill.getDefaultVersion() == null || skill.getDefaultVersion().isBlank())) {
             skill.setDefaultVersion(version);
             skillMapper.updateById(skill);
         }
-        log.info("skill version uploaded: tenant={}, skill={}, version={}, sha256={}, publish={}",
-                caller.tenantId(), skillCode, version, sha256, publish);
+        log.info("skill version uploaded: tenant={}, skill={}, version={}, sha256={}, publish={}, operator={}",
+                tenantId, skillCode, version, sha256, publish, operator);
         return new SkillDetail.VersionView(version, sha256, (long) zipBytes.length,
                 skillVersion.getStatus(), changelog, skillVersion.getCreatedAt() == null ? null
-                        : skillVersion.getCreatedAt().toString(), ossKey, ossUrl);
+                        : skillVersion.getCreatedAt().toString(), ossKey, ossUrl,
+                null, null, null);
     }
 
     /**
@@ -291,6 +308,15 @@ public class SkillService {
 
     public SkillDetail detail(CallerContext caller, String skillCode) {
         Skill skill = ownedSkill(caller, skillCode);
+        return detailOf(skill);
+    }
+
+    /** 管理面详情（跨租户，skill:read）：版本列表含审计字段。 */
+    public SkillDetail detailForAdmin(String tenantId, String skillCode) {
+        return detailOf(mustGetSkill(tenantId, skillCode));
+    }
+
+    private SkillDetail detailOf(Skill skill) {
         List<SkillDetail.VersionView> versions = skillVersionMapper.selectList(
                         new LambdaQueryWrapper<SkillVersion>()
                                 .eq(SkillVersion::getSkillId, skill.getId())
@@ -299,7 +325,9 @@ public class SkillService {
                 .map(v -> new SkillDetail.VersionView(v.getVersion(), v.getPackageSha256(),
                         v.getPackageSize(), v.getStatus(), v.getChangelog(),
                         v.getCreatedAt() == null ? null : v.getCreatedAt().toString(),
-                        v.getOssKey(), v.getOssUrl()))
+                        v.getOssKey(), v.getOssUrl(),
+                        v.getReviewer(), v.getReviewedAt() == null ? null : v.getReviewedAt().toString(),
+                        v.getRejectReason()))
                 .toList();
         return new SkillDetail(toSummary(skill), versions);
     }
@@ -307,7 +335,13 @@ public class SkillService {
     /** 运营配置即时生效，无需重传包（§4.1）；下次执行立即读到新值 */
     public SkillSummary updateConfig(CallerContext caller, String skillCode,
                                      SkillDtos.ConfigUpdateRequest request) {
-        Skill skill = ownedSkill(caller, skillCode);
+        return updateConfig(caller.tenantId(), skillCode, request);
+    }
+
+    /** 运营配置核心（管理面 skill:publish）。 */
+    public SkillSummary updateConfig(String tenantId, String skillCode,
+                                     SkillDtos.ConfigUpdateRequest request) {
+        Skill skill = mustGetSkill(tenantId, skillCode);
         if (request.outputConfig() != null) {
             if (!JsonCodec.isValidJson(request.outputConfig())) {
                 throw new BizException(ErrorCode.PARAM_INVALID, "outputConfig 必须为合法 JSON");
@@ -331,7 +365,13 @@ public class SkillService {
      */
     @Transactional
     public void delete(CallerContext caller, String skillCode) {
-        Skill skill = ownedSkill(caller, skillCode);
+        delete(caller.tenantId(), skillCode);
+    }
+
+    /** 删除核心（管理面 skill:delete）：跨租户硬删。 */
+    @Transactional
+    public void delete(String tenantId, String skillCode) {
+        Skill skill = mustGetSkill(tenantId, skillCode);
         List<SkillVersion> versions = skillVersionMapper.selectList(
                 new LambdaQueryWrapper<SkillVersion>().eq(SkillVersion::getSkillId, skill.getId()));
         for (SkillVersion version : versions) {
@@ -345,7 +385,7 @@ public class SkillService {
                 .eq(SkillVersion::getSkillId, skill.getId()));
         skillMapper.deleteById(skill.getId());
         log.info("skill deleted: tenant={}, skill={}, versions={}",
-                caller.tenantId(), skillCode, versions.size());
+                tenantId, skillCode, versions.size());
     }
 
     /**
@@ -354,7 +394,15 @@ public class SkillService {
      */
     public SkillDetail.VersionView reviewVersion(CallerContext caller, String skillCode,
                                                  String version, int targetStatus) {
-        Skill skill = ownedSkill(caller, skillCode);
+        return reviewVersion(caller.tenantId(), skillCode, version, targetStatus,
+                caller.appKeyId(), null);
+    }
+
+    /** 审核核心（管理面）：写审计列 reviewer/reviewed_at/reject_reason。 */
+    public SkillDetail.VersionView reviewVersion(String tenantId, String skillCode,
+                                                 String version, int targetStatus,
+                                                 String reviewer, String rejectReason) {
+        Skill skill = mustGetSkill(tenantId, skillCode);
         SkillVersion skillVersion = skillVersionMapper.selectOne(new LambdaQueryWrapper<SkillVersion>()
                 .eq(SkillVersion::getSkillId, skill.getId())
                 .eq(SkillVersion::getVersion, version)
@@ -374,28 +422,42 @@ public class SkillService {
                     "状态不允许流转: " + current + " → " + targetStatus + "（废弃为终态）");
         }
         skillVersion.setStatus(targetStatus);
+        skillVersion.setReviewer(reviewer);
+        skillVersion.setReviewedAt(java.time.LocalDateTime.now());
+        if (targetStatus == SkillVersion.STATUS_DEPRECATED && rejectReason != null
+                && !rejectReason.isBlank()) {
+            skillVersion.setRejectReason(rejectReason);
+        }
         skillVersionMapper.updateById(skillVersion);
         if (targetStatus == SkillVersion.STATUS_PUBLISHED
                 && (skill.getDefaultVersion() == null || skill.getDefaultVersion().isBlank())) {
             skill.setDefaultVersion(version);
             skillMapper.updateById(skill);
         }
-        log.info("skill version reviewed: tenant={}, skill={}, version={}, {} -> {}",
-                caller.tenantId(), skillCode, version, current, targetStatus);
+        log.info("skill version reviewed: tenant={}, skill={}, version={}, {} -> {}, reviewer={}",
+                tenantId, skillCode, version, current, targetStatus, reviewer);
         return new SkillDetail.VersionView(version, skillVersion.getPackageSha256(),
                 skillVersion.getPackageSize(), targetStatus, skillVersion.getChangelog(),
                 skillVersion.getCreatedAt() == null ? null : skillVersion.getCreatedAt().toString(),
-                skillVersion.getOssKey(), skillVersion.getOssUrl());
+                skillVersion.getOssKey(), skillVersion.getOssUrl(),
+                skillVersion.getReviewer(),
+                skillVersion.getReviewedAt() == null ? null : skillVersion.getReviewedAt().toString(),
+                skillVersion.getRejectReason());
     }
 
     /**
      * 市场上下架（§10.1 市场管理）：切可见性；上架 PUBLIC 需存在已发布版本。
      */
     public SkillSummary setVisibility(CallerContext caller, String skillCode, String visibility) {
+        return setVisibility(caller.tenantId(), skillCode, visibility);
+    }
+
+    /** 上下架核心（管理面，skill:publish）。 */
+    public SkillSummary setVisibility(String tenantId, String skillCode, String visibility) {
         if (!Skill.VISIBILITY_PUBLIC.equals(visibility) && !Skill.VISIBILITY_PRIVATE.equals(visibility)) {
             throw new BizException(ErrorCode.PARAM_INVALID, "visibility 仅支持 PUBLIC / PRIVATE");
         }
-        Skill skill = ownedSkill(caller, skillCode);
+        Skill skill = mustGetSkill(tenantId, skillCode);
         if (Skill.VISIBILITY_PUBLIC.equals(visibility)) {
             Long published = skillVersionMapper.selectCount(new LambdaQueryWrapper<SkillVersion>()
                     .eq(SkillVersion::getSkillId, skill.getId())
@@ -411,16 +473,21 @@ public class SkillService {
 
     public SkillSummary setDefaultVersion(CallerContext caller, String skillCode,
                                           DefaultVersionRequest request) {
-        Skill skill = ownedSkill(caller, skillCode);
-        SkillVersion version = skillVersionMapper.selectOne(new LambdaQueryWrapper<SkillVersion>()
+        return setDefaultVersion(caller.tenantId(), skillCode, request.version());
+    }
+
+    /** 默认版本切换核心（管理面 skill:rollback）：秒级回滚 = 改标记（§8.3）。 */
+    public SkillSummary setDefaultVersion(String tenantId, String skillCode, String version) {
+        Skill skill = mustGetSkill(tenantId, skillCode);
+        SkillVersion target = skillVersionMapper.selectOne(new LambdaQueryWrapper<SkillVersion>()
                 .eq(SkillVersion::getSkillId, skill.getId())
-                .eq(SkillVersion::getVersion, request.version())
+                .eq(SkillVersion::getVersion, version)
                 .last("LIMIT 1"));
-        if (version == null || version.getStatus() != SkillVersion.STATUS_PUBLISHED) {
-            throw new BizException(ErrorCode.PARAM_INVALID, "版本不存在或未发布: " + request.version());
+        if (target == null || target.getStatus() != SkillVersion.STATUS_PUBLISHED) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "版本不存在或未发布: " + version);
         }
         // 秒级回滚 = 改标记（§8.3）
-        skill.setDefaultVersion(request.version());
+        skill.setDefaultVersion(version);
         skillMapper.updateById(skill);
         return toSummary(skill);
     }
@@ -482,6 +549,40 @@ public class SkillService {
         return skill;
     }
 
+    /** 管理面取 Skill（显式租户，跨租户操作用）。 */
+    private Skill mustGetSkill(String tenantId, String skillCode) {
+        Skill skill = skillMapper.selectOne(new LambdaQueryWrapper<Skill>()
+                .eq(Skill::getTenantId, tenantId)
+                .eq(Skill::getSkillCode, skillCode)
+                .last("LIMIT 1"));
+        if (skill == null) {
+            throw new BizException(ErrorCode.SKILL_NOT_FOUND, "Skill 不存在: " + skillCode);
+        }
+        return skill;
+    }
+
+    /**
+     * 管理面跨租户列表（skill:read）：tenantId/skillCode/visibility 可选过滤。
+     */
+    public SkillPage listForAdmin(String tenantId, String skillCode, String visibility,
+                                  int pageNo, int pageSize) {
+        LambdaQueryWrapper<Skill> wrapper = new LambdaQueryWrapper<>();
+        if (tenantId != null && !tenantId.isBlank()) {
+            wrapper.eq(Skill::getTenantId, tenantId);
+        }
+        if (skillCode != null && !skillCode.isBlank()) {
+            wrapper.like(Skill::getSkillCode, skillCode.trim());
+        }
+        if (visibility != null && !visibility.isBlank()) {
+            wrapper.eq(Skill::getVisibility, visibility);
+        }
+        wrapper.orderByDesc(Skill::getId);
+        Page<Skill> page = skillMapper.selectPage(new Page<>(Math.max(pageNo, 1), clampSize(pageSize)),
+                wrapper);
+        return new SkillPage(page.getTotal(), page.getCurrent(), page.getSize(),
+                page.getRecords().stream().map(SkillService::toSummary).toList());
+    }
+
     /** FREE 公开分发模式自动签发埋点令牌（§5.7 telemetry） */
     private void syncTelemetryToken(Skill skill) {
         boolean free = "FREE".equals(JsonCodec.treeOrEmpty(skill.getPricingConfig())
@@ -492,9 +593,9 @@ public class SkillService {
     }
 
     private static SkillSummary toSummary(Skill skill) {
-        return new SkillSummary(skill.getSkillCode(), skill.getName(), skill.getDescription(),
-                skill.getVisibility(), skill.getKind(), skill.getDefaultVersion(), skill.getStatus(),
-                skill.getPricingConfig());
+        return new SkillSummary(skill.getTenantId(), skill.getSkillCode(), skill.getName(),
+                skill.getDescription(), skill.getVisibility(), skill.getKind(),
+                skill.getDefaultVersion(), skill.getStatus(), skill.getPricingConfig());
     }
 
     private static int clampSize(int pageSize) {

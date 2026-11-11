@@ -55,11 +55,15 @@ class RunResult:
 
 @dataclass
 class ArtifactFile:
-    """产物文件（§4.7 出口契约；manifest 优先，缺省按后缀推断 type）。"""
+    """产物文件（§4.7 出口契约；manifest 优先，缺省按后缀推断 type）。
+
+    V2.1 增加 content_type（按后缀推断 MIME；gateway 产物预览判定依据）。
+    """
 
     filename: str
     content: bytes
     type: str = "other"
+    content_type: str = "application/octet-stream"
     meta: dict = field(default_factory=dict)
 
     @property

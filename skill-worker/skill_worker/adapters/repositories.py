@@ -168,7 +168,7 @@ class ArtifactRepository:
                 "file_size, content_type, meta) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (new_id("art_"), task_id, tenant_id, file.type,
                  f"{tenant_id}/artifacts/{task_id}/{file.filename}",
-                 file.size, "application/octet-stream",
+                 file.size, getattr(file, "content_type", None) or "application/octet-stream",
                  json.dumps(file.meta) if file.meta else None))
 
 

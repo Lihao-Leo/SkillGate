@@ -4,8 +4,142 @@
  */
 import { createGatewayClient, buildQuery } from './client'
 import { useCredentialsStore } from '../stores/credentials'
+import { useAuthStore } from '../stores/auth'
+
+// ---- 后台登录与用户管理类型（对齐 AdminAuthDtos）----
+export interface LoginResult {
+  token: string
+  expiresInHours: number
+  username: string
+  displayName: string | null
+  role: string
+  roleName: string
+  permissions: string[]
+}
+
+export interface AdminProfile {
+  username: string
+  displayName: string | null
+  role: string
+  roleName: string
+  permissions: string[]
+}
+
+export interface UserView {
+  id: number
+  username: string
+  displayName: string | null
+  role: string
+  roleName: string
+  status: number
+  lastLoginAt: string | null
+}
+
+export interface UserPage {
+  total: number
+  pageNo: number
+  pageSize: number
+  rows: UserView[]
+}
+
+export interface RoleView {
+  roleCode: string
+  roleName: string
+  remark: string | null
+  builtin: number
+  permissions: string[]
+}
+
+export interface PermissionView {
+  permCode: string
+  permName: string
+  groupName: string
+  sortNo: number
+}
+
+// ---- 告警中心 / 模型明细类型（对齐 AlertRuleService / model_call 表）----
+export interface AlertRuleView {
+  id: number
+  ruleCode: string
+  ruleName: string
+  ruleType: string
+  skillCode: string | null
+  thresholdValue: number | null
+  severity: string
+  channels: string
+  dedupWindowSeconds: number
+  enabled: number
+}
+
+export type AlertRulePayload = {
+  ruleCode: string; ruleName: string; ruleType: string; skillCode?: string
+  thresholdValue: number; severity?: string; channels?: string
+  dedupWindowSeconds?: number; enabled?: number
+}
+
+export interface AlertRecordView {
+  id: number
+  ruleId: number | null
+  ruleCode: string
+  ruleType: string
+  severity: string
+  status: string
+  taskId: string | null
+  skillCode: string | null
+  tenantId: string | null
+  title: string
+  content: string | null
+  detail: string | null
+  notified: number
+  firstSeenAt: string
+  lastSeenAt: string
+  ackBy: string | null
+  ackAt: string | null
+  ackNote: string | null
+}
+
+export interface AlertRecordPage {
+  total: number
+  pageNo: number
+  pageSize: number
+  rows: AlertRecordView[]
+}
+
+export interface ModelCatalogEntry {
+  provider: string
+  label: string
+  endpointHint: string
+  models: string[]
+}
+
+export interface ModelCallView {
+  id: number
+  taskId: string
+  seq: number | null
+  kind: string
+  alias: string | null
+  modelName: string | null
+  provider: string | null
+  promptTokens: number | null
+  completionTokens: number | null
+  totalTokens: number | null
+  costPoints: number | null
+  durationMs: number | null
+  status: string
+  createdAt: string
+}
+
+export interface ArtifactContentView {
+  artifactId: string
+  type: string
+  contentType: string | null
+  sizeBytes: number | null
+  content: string
+  truncated: boolean
+}
 
 export interface SkillSummary {
+  tenantId: string
   skillCode: string
   name: string
   description: string
@@ -29,6 +163,10 @@ export interface SkillVersionView {
   ossKey: string | null
   /** 对象绝对访问地址（bucket endpoint + key） */
   packageUrl: string | null
+  /** 审核人（V2.1 审计列） */
+  reviewer?: string | null
+  reviewedAt?: string | null
+  rejectReason?: string | null
 }
 
 export interface SkillDetail {
@@ -89,6 +227,10 @@ export interface ArtifactView {
   type: string
   url: string
   sizeBytes: number | null
+  /** MIME（V2.1 worker 落库推断；存量行 octet-stream） */
+  contentType?: string | null
+  /** 结构化类型（json/text/markdown/html）可在线预览 */
+  previewable?: boolean
 }
 
 export interface ExecutionView {
@@ -229,9 +371,130 @@ export const gatewayApi = (() => {
       const store = useCredentialsStore()
       return store.adminReady ? store.adminToken : null
     },
+    getAuthToken: () => useAuthStore().session?.token || null,
+    onUnauthorized: () => {
+      useAuthStore().clear()
+      window.location.assign('/login')
+    },
   })
 
   return {
+    // ---- 后台登录与用户管理（admin 面 JWT）----
+    adminLogin: (username: string, password: string) =>
+      client.plainJson<LoginResult>('POST', '/api/v1/admin/auth/login', { username, password }),
+    adminMe: () =>
+      client.adminJson<AdminProfile>('GET', '/api/v1/admin/auth/me'),
+    adminChangePassword: (oldPassword: string, newPassword: string) =>
+      client.adminJson<void>('PUT', '/api/v1/admin/auth/password',
+        { oldPassword, newPassword }),
+    adminListUsers: (keyword: string | undefined, pageNo: number, pageSize: number) =>
+      client.adminJson<UserPage>('GET',
+        '/api/v1/admin/users' + buildQuery({ keyword, pageNo, pageSize })),
+    adminCreateUser: (payload: { username: string; password: string;
+      displayName?: string; roleCode: string }) =>
+      client.adminJson<UserView>('POST', '/api/v1/admin/users', payload),
+    adminChangeUserRole: (username: string, roleCode: string) =>
+      client.adminJson<UserView>('PUT',
+        `/api/v1/admin/users/${encodeURIComponent(username)}/role`, { roleCode }),
+    adminChangeUserStatus: (username: string, status: 0 | 1) =>
+      client.adminJson<UserView>('PUT',
+        `/api/v1/admin/users/${encodeURIComponent(username)}/status`, { status }),
+    adminResetUserPassword: (username: string) =>
+      client.adminJson<{ username: string; password: string }>('POST',
+        `/api/v1/admin/users/${encodeURIComponent(username)}/reset-password`),
+    adminListRoles: () =>
+      client.adminJson<RoleView[]>('GET', '/api/v1/admin/roles'),
+    adminListPermissions: () =>
+      client.adminJson<PermissionView[]>('GET', '/api/v1/admin/permissions'),
+
+    // ---- 告警中心（admin 面 JWT）----
+    adminListAlertRules: () =>
+      client.adminJson<AlertRuleView[]>('GET', '/api/v1/admin/alert-rules'),
+    adminCreateAlertRule: (payload: AlertRulePayload) =>
+      client.adminJson<AlertRuleView>('POST', '/api/v1/admin/alert-rules', payload),
+    adminUpdateAlertRule: (id: number, payload: Partial<AlertRulePayload>) =>
+      client.adminJson<AlertRuleView>('PUT', `/api/v1/admin/alert-rules/${id}`, payload),
+    adminDeleteAlertRule: (id: number) =>
+      client.adminJson<void>('DELETE', `/api/v1/admin/alert-rules/${id}`),
+    adminUpdateAlertRuleStatus: (id: number, enabled: 0 | 1) =>
+      client.adminJson<AlertRuleView>('PUT', `/api/v1/admin/alert-rules/${id}/status`,
+        { enabled }),
+    adminListAlertRecords: (opts: { status?: string; ruleType?: string; taskId?: string;
+      skillCode?: string; pageNo: number; pageSize: number }) =>
+      client.adminJson<AlertRecordPage>('GET', '/api/v1/admin/alert-records' + buildQuery({
+        status: opts.status || undefined,
+        ruleType: opts.ruleType || undefined,
+        taskId: opts.taskId || undefined,
+        skillCode: opts.skillCode || undefined,
+        pageNo: opts.pageNo, pageSize: opts.pageSize,
+      })),
+    adminAckAlertRecord: (id: number, note?: string) =>
+      client.adminJson<AlertRecordView>('PUT',
+        `/api/v1/admin/alert-records/${id}/ack`, { note }),
+    adminAlertPendingCount: () =>
+      client.adminJson<{ count: number }>('GET', '/api/v1/admin/alert-records/pending-count'),
+
+    // ---- 模型目录与连通性（V2.1）----
+    adminModelCatalog: () =>
+      client.adminJson<ModelCatalogEntry[]>('GET', '/api/v1/admin/model-catalog'),
+    adminTestModelProvider: (payload: { alias?: string; endpoint?: string;
+      modelName?: string; apiKey?: string }) =>
+      client.adminJson<{ ok: boolean; latencyMs: number; httpStatus: number;
+        message: string; sample: string }>('POST', '/api/v1/admin/model-providers/test',
+        payload),
+
+    // ---- 执行明细扩展（V2.1）----
+    adminModelCalls: (taskId: string) =>
+      client.adminJson<ModelCallView[]>('GET',
+        `/api/v1/admin/executions/${encodeURIComponent(taskId)}/model-calls`),
+    adminArtifactContent: (taskId: string, artifactId: string) =>
+      client.adminJson<ArtifactContentView>('GET',
+        `/api/v1/admin/executions/${encodeURIComponent(taskId)}/artifacts/`
+        + `${encodeURIComponent(artifactId)}/content`),
+
+    // ---- Skill 管理面（admin 面 JWT，按权限点分权）----
+    adminListSkills: (opts: { tenantId?: string; skillCode?: string; visibility?: string;
+      pageNo: number; pageSize: number }) =>
+      client.adminJson<SkillPage>('GET', '/api/v1/admin/skills' + buildQuery({
+        tenantId: opts.tenantId || undefined,
+        skillCode: opts.skillCode || undefined,
+        visibility: opts.visibility || undefined,
+        pageNo: opts.pageNo,
+        pageSize: opts.pageSize,
+      })),
+    adminSkillDetail: (tenantId: string, skillCode: string) =>
+      client.adminJson<SkillDetail>('GET',
+        `/api/v1/admin/skills/${encodeURIComponent(tenantId)}/${encodeURIComponent(skillCode)}`),
+    adminUploadSkill: (tenantId: string, skillCode: string, fields: {
+      version: string; name?: string; description?: string; visibility?: string
+      requiredAbilities?: string; outputConfig?: string; pricingConfig?: string
+      invocationSpec?: string; changelog?: string; publish?: string
+    }, file: File) =>
+      client.adminUpload<SkillVersionView>(
+        `/api/v1/admin/skills/${encodeURIComponent(tenantId)}/${encodeURIComponent(skillCode)}/versions`,
+        file, fields as Record<string, string>),
+    adminReviewVersion: (tenantId: string, skillCode: string, version: string,
+                         status: 1 | 2, reason?: string) =>
+      client.adminJson<SkillVersionView>('PUT',
+        `/api/v1/admin/skills/${encodeURIComponent(tenantId)}/${encodeURIComponent(skillCode)}`
+        + `/versions/${encodeURIComponent(version)}/status`, { status, reason }),
+    adminSetDefaultVersion: (tenantId: string, skillCode: string, version: string) =>
+      client.adminJson<SkillSummary>('PUT',
+        `/api/v1/admin/skills/${encodeURIComponent(tenantId)}/${encodeURIComponent(skillCode)}`
+        + `/default-version`, { version }),
+    adminSetVisibility: (tenantId: string, skillCode: string, visibility: 'PUBLIC' | 'PRIVATE') =>
+      client.adminJson<SkillSummary>('PUT',
+        `/api/v1/admin/skills/${encodeURIComponent(tenantId)}/${encodeURIComponent(skillCode)}`
+        + `/visibility`, { visibility }),
+    adminUpdateSkillConfig: (tenantId: string, skillCode: string,
+                             outputConfig: string, pricingConfig: string) =>
+      client.adminJson<SkillSummary>('PUT',
+        `/api/v1/admin/skills/${encodeURIComponent(tenantId)}/${encodeURIComponent(skillCode)}`
+        + `/config`, { outputConfig, pricingConfig }),
+    adminDeleteSkill: (tenantId: string, skillCode: string) =>
+      client.adminJson<void>('DELETE',
+        `/api/v1/admin/skills/${encodeURIComponent(tenantId)}/${encodeURIComponent(skillCode)}`),
+
     // ---- Skill 管理（业务面 HMAC）----
     listSkills: (pageNo: number, pageSize: number) =>
       client.signedJson<SkillPage>('GET', `/api/v1/skills${buildQuery({ pageNo, pageSize })}`),
@@ -352,8 +615,8 @@ export const gatewayApi = (() => {
       client.adminJson<{ ok: boolean; message: string; response?: string }>(
         'POST', '/api/v1/admin/alert-config/test'),
 
-    adminMetricsDashboard: (hours: number) =>
-      client.adminJson<any>('GET', `/api/v1/admin/metrics/dashboard?hours=${hours}`),
+    adminMetricsDashboard: (hours: number, topN = 5) =>
+      client.adminJson<any>('GET', `/api/v1/admin/metrics/dashboard?hours=${hours}&topN=${topN}`),
     adminListExecutions: (hours: number, opts: {
       status?: string; skill?: string; tenant?: string; onlyFailed?: boolean;
       sortBy?: string; pageNo: number; pageSize: number

@@ -12,8 +12,8 @@ public final class SkillDtos {
     private SkillDtos() {
     }
 
-    public record SkillSummary(String skillCode, String name, String description, String visibility,
-                               String kind, String defaultVersion, Integer status,
+    public record SkillSummary(String tenantId, String skillCode, String name, String description,
+                               String visibility, String kind, String defaultVersion, Integer status,
                                String pricingConfig) {
     }
 
@@ -23,7 +23,9 @@ public final class SkillDtos {
         @JsonInclude(JsonInclude.Include.NON_NULL)
         public record VersionView(String version, String packageSha256, Long packageSize,
                                   Integer status, String changelog, String uploadedAt,
-                                  String ossKey, String packageUrl) {
+                                  String ossKey, String packageUrl,
+                                  /** V2.1 审计：审核人 / 时间 / 驳回原因 */
+                                  String reviewer, String reviewedAt, String rejectReason) {
         }
     }
 
