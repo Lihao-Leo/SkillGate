@@ -62,8 +62,7 @@ public class IssueService {
                     "type 仅支持 " + String.join("/", VALID_TYPES));
         }
         Issue issue = new Issue();
-        issue.setTicketNo("tk-" + com.skill.platform.gateway.common.Ids.next("tk").replace("tk-", "")
-                + com.skill.platform.gateway.common.Ids.newAppSecret().substring(0, 4));
+        issue.setTicketNo(com.skill.platform.gateway.common.Ids.next("tk"));
         issue.setTitle(input.title().trim());
         issue.setType(input.type());
         issue.setSeverity(input.severity() == null || input.severity().isBlank()

@@ -41,7 +41,8 @@ public class LogQueryService {
     }
 
     /**
-     * 任务事件检索分页。taskId 走 idx_task_seq 精确；无 taskId 强制时间窗 ≤ 7 天 + LIMIT 200。
+     * 任务事件检索分页。taskId 走 idx_task_seq 精确；无 taskId 强制时间窗 ≤ 7 天，
+     * pageSize 钳制 ≤ 200（防无 taskId 时全表扫描）。
      */
     public Page<ExecutionEvent> eventPage(String taskId, String stage, String status,
                                           LocalDateTime from, LocalDateTime to,
@@ -59,7 +60,7 @@ public class LogQueryService {
         if (status != null && !status.isBlank()) wrapper.eq("status", status);
         if (from != null) wrapper.ge("occurred_at", from);
         if (to != null) wrapper.le("occurred_at", to);
-        wrapper.orderByDesc("occurred_at").last("LIMIT " + MAX_LIMIT);
+        wrapper.orderByDesc("occurred_at");
         return executionEventMapper.selectPage(
                 new Page<>(Math.max(pageNo, 1), Math.min(Math.max(pageSize, 1), MAX_LIMIT)), wrapper);
     }

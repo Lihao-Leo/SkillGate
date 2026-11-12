@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.skill.platform.gateway.billing.BillingClient;
 import com.skill.platform.gateway.billing.BillingViews.RechargeResult;
+import com.skill.platform.gateway.common.BizException;
+import com.skill.platform.gateway.common.ErrorCode;
 import com.skill.platform.gateway.common.Ids;
 import com.skill.platform.gateway.dal.entity.AppKey;
 import com.skill.platform.gateway.dal.entity.TenantQuota;
@@ -115,13 +117,15 @@ public class AppKeyAdminService {
      */
     public Map<String, Object> updateQuota(String appKeyId,
                                            Integer qps, Integer maxRunning, Integer dailyLimit) {
-        for (Map.Entry<String, Integer> entry : Map.of(
-                "qps", qps, "maxRunning", maxRunning, "dailyLimit", dailyLimit).entrySet()) {
-            Integer v = entry.getValue();
-            if (v != null && v < 1) {
-                throw new IllegalArgumentException(
-                        entry.getKey() + " 配额必须 ≥ 1（留空 = 跟随全局默认）");
-            }
+        // Map.of 不接受 null（留空=跟随全局会传 null）——逐字段校验
+        if (qps != null && qps < 1) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "qps 配额必须 ≥ 1（留空 = 跟随全局默认）");
+        }
+        if (maxRunning != null && maxRunning < 1) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "maxRunning 配额必须 ≥ 1（留空 = 跟随全局默认）");
+        }
+        if (dailyLimit != null && dailyLimit < 1) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "dailyLimit 配额必须 ≥ 1（留空 = 跟随全局默认）");
         }
         AppKey appKey = loadKey(appKeyId);
         String quotaJson = (qps == null && maxRunning == null && dailyLimit == null)
@@ -154,14 +158,17 @@ public class AppKeyAdminService {
                                                  Integer qps, Integer maxRunning,
                                                  Integer dailyLimit, String remark) {
         if (tenantId == null || tenantId.isBlank()) {
-            throw new IllegalArgumentException("tenantId 不能为空");
+            throw new BizException(ErrorCode.PARAM_INVALID, "tenantId 不能为空");
         }
-        for (Map.Entry<String, Integer> entry : Map.of(
-                "qps", qps, "maxRunning", maxRunning, "dailyLimit", dailyLimit).entrySet()) {
-            Integer v = entry.getValue();
-            if (v != null && v < 1) {
-                throw new IllegalArgumentException(entry.getKey() + " 配额必须 ≥ 1（留空 = 该维度不限）");
-            }
+        // Map.of 不接受 null（NULL=该维度不限是合法输入）——逐字段校验
+        if (qps != null && qps < 1) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "qps 配额必须 ≥ 1（留空 = 该维度不限）");
+        }
+        if (maxRunning != null && maxRunning < 1) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "maxRunning 配额必须 ≥ 1（留空 = 该维度不限）");
+        }
+        if (dailyLimit != null && dailyLimit < 1) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "dailyLimit 配额必须 ≥ 1（留空 = 该维度不限）");
         }
         TenantQuota row = tenantQuotaMapper.selectOne(new LambdaQueryWrapper<TenantQuota>()
                 .eq(TenantQuota::getTenantId, tenantId).last("LIMIT 1"));
@@ -180,8 +187,11 @@ public class AppKeyAdminService {
         }
         log.info("tenant quota upserted: tenant={}, qps={}, maxRunning={}, dailyLimit={}",
                 tenantId, qps, maxRunning, dailyLimit);
-        return Map.of("tenantId", tenantId, "qps", qps,
-                "maxRunning", maxRunning, "dailyLimit", dailyLimit);
+        // Map.of 不接受 null——返回持久化后的行（NULL 维度原样回显）
+        return Map.of("tenantId", tenantId,
+                "qps", qps == null ? "不限" : qps,
+                "maxRunning", maxRunning == null ? "不限" : maxRunning,
+                "dailyLimit", dailyLimit == null ? "不限" : dailyLimit);
     }
 
     /** 删除租户配额行：该租户恢复仅 Key 级限流。 */
