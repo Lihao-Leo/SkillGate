@@ -17,15 +17,33 @@
 > 管理后台已升级 **React 18 + Ant Design 5（ProLayout）**，并新增「总览」首页（运行健康 + 消耗总览合并）、
 > 消耗看板、问题工单、日志查询、双层限流配额管理。下方截图为上一版界面（功能一致，布局已升级），最新界面截图待补充。
 
-| **执行监控 · 看板与列表** | **任务详情 · 执行链路流水线** |
+| **总览（运行健康 + 消耗总览）** | **消耗看板（预算 / 对账）** |
 |---|---|
+| ![总览](docs/images/screenshots/admin-overview.png) | ![消耗看板](docs/images/screenshots/admin-consumption.png) |
+| **执行监控 · 看板与任务列表** | **任务详情 · 执行链路流水线 / 模型调用明细** |
 | ![执行监控](docs/images/screenshots/admin-executions.png) | ![执行链路](docs/images/screenshots/admin-execution-drawer.png) |
-| **监控大屏（/wall 轮播流水线墙）** | **暗色模式** |
+| **问题工单（转单 / 流转闭环）** | **日志查询（埋点 + 事件链双源）** |
+| ![问题工单](docs/images/screenshots/admin-issues.png) | ![日志查询](docs/images/screenshots/admin-logs.png) |
+| **Skill 管理（版本审核 / 回滚 / 监控）** | **AppKey 与账户（双层限流配额）** |
+| ![Skill 管理](docs/images/screenshots/admin-skills.png) | ![AppKey](docs/images/screenshots/admin-appkeys.png) |
+| **监控大屏（/wall 恒深色）** | **暗色模式** |
 | ![监控大屏](docs/images/screenshots/admin-wall.png) | ![暗色模式](docs/images/screenshots/admin-dark.png) |
-| **告警配置（系统配置页）** | Skill 管理（管理后台） |
-| ![告警配置](docs/images/screenshots/admin-alert-config.png) | ![Skill 管理](docs/images/screenshots/admin-skills.png) |
 | 点数充值（用户端） | 登录 / 注册（用户端） |
 | ![点数充值](docs/images/screenshots/portal-recharge.png) | ![登录注册](docs/images/screenshots/portal-login.png) |
+
+### 管理后台功能矩阵（V2.3）
+
+| 模块 | 能力 |
+|---|---|
+| **总览（首页）** | 运行健康 KPI（队列 / 成功率 / P99 / 告警）+ 消耗总览 KPI（30 天点数 / tokens / 调用 / 失败成本）+ 日消耗趋势 + Skill 排行 + 快捷入口 |
+| **执行监控** | 任务筛选定位（状态 / Skill / 租户 / 仅看失败 / 排序）· 详情抽屉（时间线 / CI-CD 流程图 / 模型调用明细 / 产物预览）· 强制终止 / 重试 / 回调死信台 |
+| **Skill 管理** | 上传校验（CODE/AGENT 自动识别）· 版本审核（通过 / 驳回留痕）· 秒级回滚 · 上/下架二次确认 · 单 Skill 监控 Tab · 试运行 |
+| **消耗看板** | Token 与费用聚合（按 Skill / 模型 / 租户 / 按日）· 失败成本 · 任务对照（成本 vs 定价收入）· 月度预算与阈值告警 |
+| **告警中心 + 问题工单** | 阈值规则热生效 · 告警认领 · 一键转工单（归因 → 修复 → 验证 → 关单） |
+| **日志查询** | FREE 分发埋点（skill_io_log）+ 任务事件链（execution_event）跨运行检索 |
+| **AppKey 与账户** | 签发 / 轮换 / 入账 · **Key 级 + 租户汇总双层限流配额**（QPS / 并发 / 日量，实时生效） |
+| **模型与能力** | alias 路由 + 回退链 · 供应商目录下拉 · 连通性测试 · 费率（驱动消耗看板成本折算） |
+| **知识库 / 系统配置** | KB 文档入库 · 全局配额 · 飞书告警通道 |
 
 ### 管理后台功能矩阵（V2.3）
 
