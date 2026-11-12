@@ -459,3 +459,34 @@ INSERT INTO admin_role_permission (role_code, perm_code) VALUES
     ('OPS', 'alert:read'), ('OPS', 'alert:manage'), ('OPS', 'model:read'), ('OPS', 'key:read'),
     ('VIEWER', 'metrics:read'), ('VIEWER', 'skill:read'), ('VIEWER', 'execution:read'), ('VIEWER', 'alert:read')
 ON DUPLICATE KEY UPDATE role_code = VALUES(role_code);
+
+-- ============================================================
+-- V2.2_1 增量（消耗看板：预算表 + 消耗权限点）
+-- ============================================================
+
+-- 消耗预算（月度；scope_value 用 '' 非 NULL，规避 MySQL 唯一索引 NULL 去重失效）
+CREATE TABLE IF NOT EXISTS `budget` (
+    `id`                  BIGINT       NOT NULL AUTO_INCREMENT COMMENT '自增主键',
+    `scope_type`          VARCHAR(16)  NOT NULL COMMENT 'GLOBAL / TENANT / SKILL',
+    `scope_value`         VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'GLOBAL 为空串；TENANT=租户ID；SKILL=skillCode',
+    `period_type`         VARCHAR(16)  NOT NULL DEFAULT 'MONTHLY' COMMENT '周期：MONTHLY（v1 仅月度）',
+    `amount_points`       BIGINT       NOT NULL COMMENT '周期额度（点）',
+    `alert_threshold_pct` INT          NOT NULL DEFAULT 80 COMMENT '告警阈值百分比（达阈值产生告警记录）',
+    `enabled`             TINYINT      NOT NULL DEFAULT 1 COMMENT '1=启用 0=停用',
+    `created_at`          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_budget_scope` (`scope_type`, `scope_value`, `period_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='消耗预算（月度）';
+
+-- 权限点（消耗看板）
+INSERT INTO admin_permission (perm_code, perm_name, group_name, sort_no) VALUES
+    ('consumption:read',   '消耗查看',   '消耗',   1),
+    ('consumption:manage', '预算管理',   '消耗',   2)
+ON DUPLICATE KEY UPDATE perm_name = VALUES(perm_name), group_name = VALUES(group_name), sort_no = VALUES(sort_no);
+
+INSERT INTO admin_role_permission (role_code, perm_code) VALUES
+    ('SUPER_ADMIN', 'consumption:read'), ('SUPER_ADMIN', 'consumption:manage'),
+    ('OPS', 'consumption:read'), ('OPS', 'consumption:manage'),
+    ('VIEWER', 'consumption:read'), ('SKILL_MANAGER', 'consumption:read')
+ON DUPLICATE KEY UPDATE role_code = VALUES(role_code);

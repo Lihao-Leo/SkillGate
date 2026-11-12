@@ -138,6 +138,79 @@ export interface ArtifactContentView {
   truncated: boolean
 }
 
+// ---- 消耗看板类型（V2.2，对齐 ConsumptionService / budget 表）----
+export interface ConsumptionQuery extends Record<string, string | number | undefined> {
+  hours?: number
+  tenantId?: string
+  skillCode?: string
+  alias?: string
+}
+
+export interface ConsumptionSummary {
+  tokens: number
+  costPoints: number
+  calls: number
+  failedCalls: number
+  failedCost: number
+  avgDurationMs: number
+  models: number
+}
+
+export interface ConsumptionGroupRow {
+  /** 按维度不同：skill_code / alias / tenant_id */
+  [key: string]: any
+}
+
+export interface ConsumptionDailyRow {
+  day: string
+  tokens: number
+  costPoints: number
+  calls: number
+  failedCalls: number
+  failedCost: number
+}
+
+export interface ConsumptionTaskPage {
+  total: number
+  pageNo: number
+  pageSize: number
+  rows: ConsumptionTaskRow[]
+}
+
+export interface ConsumptionTaskRow {
+  task_id: string
+  tenant_id: string
+  skill_code: string
+  calls: number
+  tokens: number
+  costPoints: number
+  failedCalls: number
+  revenuePoints: number
+  marginPoints: number
+  pricingNote: string
+  executionStatus: string | null
+}
+
+export interface BudgetStatusView {
+  id: number
+  scopeType: string
+  scopeValue: string
+  periodType: string
+  amountPoints: number
+  alertThresholdPct: number
+  enabled: number
+  usedPoints: number
+  usedPct: number
+}
+
+export interface BudgetPayload {
+  scopeType: string
+  scopeValue?: string
+  amountPoints: number
+  alertThresholdPct?: number
+  enabled?: number
+}
+
 export interface SkillSummary {
   tenantId: string
   skillCode: string
@@ -433,6 +506,31 @@ export const gatewayApi = (() => {
         `/api/v1/admin/alert-records/${id}/ack`, { note }),
     adminAlertPendingCount: () =>
       client.adminJson<{ count: number }>('GET', '/api/v1/admin/alert-records/pending-count'),
+
+    // ---- 消耗看板（V2.2）----
+    consumptionSummary: (opts: ConsumptionQuery) =>
+      client.adminJson<ConsumptionSummary>('GET', '/api/v1/admin/consumption/summary' + buildQuery(opts)),
+    consumptionBySkill: (opts: ConsumptionQuery) =>
+      client.adminJson<ConsumptionGroupRow[]>('GET', '/api/v1/admin/consumption/by-skill' + buildQuery(opts)),
+    consumptionByModel: (opts: ConsumptionQuery) =>
+      client.adminJson<ConsumptionGroupRow[]>('GET', '/api/v1/admin/consumption/by-model' + buildQuery(opts)),
+    consumptionByTenant: (opts: ConsumptionQuery) =>
+      client.adminJson<ConsumptionGroupRow[]>('GET', '/api/v1/admin/consumption/by-tenant' + buildQuery(opts)),
+    consumptionDaily: (opts: ConsumptionQuery) =>
+      client.adminJson<ConsumptionDailyRow[]>('GET', '/api/v1/admin/consumption/daily' + buildQuery(opts)),
+    consumptionTasks: (opts: ConsumptionQuery & { pageNo: number; pageSize: number }) =>
+      client.adminJson<ConsumptionTaskPage>('GET', '/api/v1/admin/consumption/tasks' + buildQuery(opts)),
+
+    budgetList: () =>
+      client.adminJson<BudgetStatusView[]>('GET', '/api/v1/admin/budgets'),
+    budgetCreate: (payload: BudgetPayload) =>
+      client.adminJson<BudgetStatusView>('POST', '/api/v1/admin/budgets', payload),
+    budgetUpdate: (id: number, payload: Partial<BudgetPayload>) =>
+      client.adminJson<BudgetStatusView>('PUT', `/api/v1/admin/budgets/${id}`, payload),
+    budgetDelete: (id: number) =>
+      client.adminJson<void>('DELETE', `/api/v1/admin/budgets/${id}`),
+    budgetUpdateStatus: (id: number, enabled: 0 | 1) =>
+      client.adminJson<BudgetStatusView>('PUT', `/api/v1/admin/budgets/${id}/status`, { enabled }),
 
     // ---- 模型目录与连通性（V2.1）----
     adminModelCatalog: () =>

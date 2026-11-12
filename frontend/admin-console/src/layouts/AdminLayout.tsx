@@ -4,8 +4,8 @@ import { ProLayout } from '@ant-design/pro-components'
 import type { ProLayoutProps } from '@ant-design/pro-components'
 import {
   AlertOutlined, ApiOutlined, AppstoreOutlined, BellOutlined, DatabaseOutlined,
-  FundViewOutlined, KeyOutlined, LogoutOutlined, MoonOutlined, SettingOutlined,
-  SunOutlined, UserOutlined, WalletOutlined,
+  FundViewOutlined, KeyOutlined, LogoutOutlined, MoonOutlined, PieChartOutlined,
+  SettingOutlined, SunOutlined, UserOutlined, WalletOutlined,
 } from '@ant-design/icons'
 import { Dropdown } from 'antd'
 import { clearSession, hasPerm, useAuthStore } from '../stores/auth'
@@ -34,6 +34,7 @@ const MENU_GROUPS: MenuGroup[] = [
   {
     title: '平台',
     items: [
+      { path: '/consumption', name: '消耗看板', icon: <PieChartOutlined />, perm: 'consumption:read' },
       { path: '/models', name: '模型与能力', icon: <ApiOutlined />, perm: 'model:read' },
       { path: '/kb', name: '知识库', icon: <DatabaseOutlined />, perm: 'kb:manage' },
       { path: '/alerts', name: '告警中心', icon: <AlertOutlined />, perm: 'alert:read' },

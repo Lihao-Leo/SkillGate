@@ -14,6 +14,7 @@ import KbPage from './pages/Kb'
 import AlertsPage from './pages/Alerts'
 import SysconfigPage from './pages/Sysconfig'
 import UsersPage from './pages/Users'
+import ConsumptionPage from './pages/Consumption'
 
 /** 未登录 → /login（对齐 vue-router 守卫第 1 条）。 */
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -75,6 +76,14 @@ export const router = createBrowserRouter([
       {
         path: '/account',
         element: <AccountPage />,
+      },
+      {
+        path: '/consumption',
+        element: (
+          <RequirePerm perm="consumption:read">
+            <ConsumptionPage />
+          </RequirePerm>
+        ),
       },
       {
         path: '/models',

@@ -408,3 +408,26 @@ MERGE INTO admin_role_permission (role_code, perm_code) KEY(role_code, perm_code
 MERGE INTO admin_role_permission (role_code, perm_code) KEY(role_code, perm_code) VALUES ('VIEWER', 'skill:read');
 MERGE INTO admin_role_permission (role_code, perm_code) KEY(role_code, perm_code) VALUES ('VIEWER', 'execution:read');
 MERGE INTO admin_role_permission (role_code, perm_code) KEY(role_code, perm_code) VALUES ('VIEWER', 'alert:read');
+
+-- V2.2_1 增量（消耗看板：预算表 + 消耗权限点）
+CREATE TABLE IF NOT EXISTS budget (
+    id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+    scope_type    VARCHAR(16) NOT NULL,
+    scope_value   VARCHAR(128) NOT NULL DEFAULT '',
+    period_type   VARCHAR(16) NOT NULL DEFAULT 'MONTHLY',
+    amount_points BIGINT NOT NULL,
+    alert_threshold_pct INT NOT NULL DEFAULT 80,
+    enabled       TINYINT NOT NULL DEFAULT 1,
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_budget_scope UNIQUE (scope_type, scope_value, period_type)
+);
+
+MERGE INTO admin_permission (perm_code, perm_name, group_name, sort_no) KEY(perm_code) VALUES ('consumption:read', '消耗查看', '消耗', 1);
+MERGE INTO admin_permission (perm_code, perm_name, group_name, sort_no) KEY(perm_code) VALUES ('consumption:manage', '预算管理', '消耗', 2);
+MERGE INTO admin_role_permission (role_code, perm_code) KEY(role_code, perm_code) VALUES ('SUPER_ADMIN', 'consumption:read');
+MERGE INTO admin_role_permission (role_code, perm_code) KEY(role_code, perm_code) VALUES ('SUPER_ADMIN', 'consumption:manage');
+MERGE INTO admin_role_permission (role_code, perm_code) KEY(role_code, perm_code) VALUES ('OPS', 'consumption:read');
+MERGE INTO admin_role_permission (role_code, perm_code) KEY(role_code, perm_code) VALUES ('OPS', 'consumption:manage');
+MERGE INTO admin_role_permission (role_code, perm_code) KEY(role_code, perm_code) VALUES ('VIEWER', 'consumption:read');
+MERGE INTO admin_role_permission (role_code, perm_code) KEY(role_code, perm_code) VALUES ('SKILL_MANAGER', 'consumption:read');
