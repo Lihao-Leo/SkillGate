@@ -32,7 +32,7 @@ export default function LoginPage() {
         roleName: result.roleName,
         permissions: result.permissions,
       })
-      navigate(appKeyReadyNow ? '/executions' : '/connect')
+      navigate(appKeyReadyNow ? '/' : '/connect')
     } catch (e) {
       setError(e instanceof ApiError ? e.message : '登录失败，请稍后重试')
     } finally {

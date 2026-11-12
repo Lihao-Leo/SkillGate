@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { hasPerm, useAuthStore } from './stores/auth'
 import AdminLayout from './layouts/AdminLayout'
 import LoginPage from './pages/Login'
+import HomePage from './pages/Home'
 import ConnectPage from './pages/Connect'
 import SkillsPage from './pages/Skills'
 import AppKeysPage from './pages/AppKeys'
@@ -47,7 +48,11 @@ export const router = createBrowserRouter([
       </RequireAuth>
     ),
     children: [
-      { path: '/', element: <Navigate to="/executions" replace /> },
+      { path: '/', element: (
+        <RequirePerm perm="metrics:read">
+          <HomePage />
+        </RequirePerm>
+      ) },
       { path: '/connect', element: <ConnectPage /> },
       {
         path: '/skills',

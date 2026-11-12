@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Alert, App as AntdApp, Button, Card, Checkbox, Col, Descriptions, Drawer, Empty, Input,
-  Modal, Progress, Row, Select, Space, Table, Tabs, Tag,
+  Alert, App as AntdApp, Button, Card, Checkbox, Descriptions, Drawer, Input, Modal,
+  Progress, Select, Space, Table, Tabs, Tag,
 } from 'antd'
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table'
 import { SearchOutlined } from '@ant-design/icons'
@@ -25,13 +25,6 @@ const statusMeta: Record<string, { label: string; color: string }> = {
   CANCELLED: { label: 'CANCELLED', color: '#98a2b3' },
 }
 
-const TX_TYPE_TEXT: Record<string, string> = {}
-
-function fmtDateTime(value: string | null | undefined): string {
-  if (!value) return '—'
-  return value.replace('T', ' ').slice(0, 19)
-}
-
 function fmtDuration(ms: number | null | undefined): string {
   if (!ms) return '—'
   const s = Math.round(ms / 1000)
@@ -43,16 +36,15 @@ function isTerminal(status: string): boolean {
   return status === 'SUCCEEDED' || status === 'FAILED' || status === 'CANCELLED'
 }
 
-const CHART_W = 640
-const CHART_H = 170
-
+/**
+ * 执行监控（V2.2 瘦身版）：聚焦任务定位与干预。
+ * 运行健康/消耗趋势等看板内容已上移至「总览」首页，避免重复。
+ */
 export default function ExecutionsPage() {
   const navigate = useNavigate()
   const { message, modal } = AntdApp.useApp()
 
-  // ---------- 看板 ----------
   const [range, setRangeState] = useState<Range>(24)
-  const [board, setBoard] = useState<any>(null)
   const [recent, setRecent] = useState<{ pageNo: number; pageSize: number; items: any[]; total: number }>(
     { pageNo: 1, pageSize: 10, items: [], total: 0 })
   const [recentLoading, setRecentLoading] = useState(false)
@@ -70,14 +62,6 @@ export default function ExecutionsPage() {
   const [inputLoading, setInputLoading] = useState(false)
   const [inputJson, setInputJson] = useState('')
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  async function loadBoard(rangeValue: Range) {
-    try {
-      setBoard(await gatewayApi.adminMetricsDashboard(rangeValue))
-    } catch {
-      setBoard(null)
-    }
-  }
 
   async function loadRecent(rangeValue: Range, currentFilters: typeof filters,
                             pageNo: number, pageSize: number) {
@@ -100,19 +84,15 @@ export default function ExecutionsPage() {
     }
   }
 
-  /**
-   * 筛选变更统一入口：合并 patch 后立即加载（第 1 页）。
-   * 修复：状态/仅看失败等控件只改 state 不触发加载，导致筛选"不生效"。
-   */
+  /** 筛选变更统一入口：合并 patch 后立即加载（第 1 页）。 */
   function applyWith(patch: Partial<typeof filters>) {
     const next = { ...filters, ...patch }
     setFilters(next)
     loadRecent(range, next, 1, recent.pageSize)
   }
 
-  /** 表头排序（时长/tokens 降序排查最耗时、最贵任务）；翻页（无 sorter.order）保留排序与页码。 */
-  function onTableChange(pagination: TablePaginationConfig, _filters: unknown,
-                         sorter: any) {
+  /** 表头排序；翻页（无 sorter.order）保留排序与页码。 */
+  function onTableChange(pagination: TablePaginationConfig, _filters: unknown, sorter: any) {
     const field = String(sorter?.field ?? '')
     if (field === 'durationMs' || field === 'tokensUsed') {
       const sortBy = sorter?.order
@@ -121,7 +101,6 @@ export default function ExecutionsPage() {
       applyWith({ sortBy })
       return
     }
-    // 纯翻页：保留当前筛选与排序
     loadRecent(range, filters, pagination.current ?? 1, pagination.pageSize ?? recent.pageSize)
   }
 
@@ -149,18 +128,7 @@ export default function ExecutionsPage() {
     }
   }
 
-  function applyFilters() {
-    applyWith({})
-  }
-
-  function setRange(r: Range) {
-    setRangeState(r)
-    loadBoard(r)
-    loadRecent(r, filters, recent.pageNo, recent.pageSize)
-  }
-
   useEffect(() => {
-    loadBoard(range)
     loadRecent(range, filters, 1, recent.pageSize)
     return () => stopRefresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -259,7 +227,7 @@ export default function ExecutionsPage() {
     }
   }
 
-  // ---------- 异常处理台 ----------
+  // ---------- 异常处理台（回调死信） ----------
   const deadLetters = recent.items.filter((i) => i.callbackStatus === 'FAILED')
 
   async function resendCallback(taskIdToResend: string) {
@@ -281,46 +249,6 @@ export default function ExecutionsPage() {
       message.error((e as Error).message)
     }
   }
-
-  // ---------- 看板派生 ----------
-  const rangeLabel = range === 24 ? '今日' : range === 168 ? '近 7 天' : '近 30 天'
-  const throughput: any[] = board?.throughput ?? []
-
-  function linePath(key: 'accepted' | 'completed'): string {
-    const values = throughput.map((t) => Number(t[key]))
-    if (!values.length) return ''
-    const max = Math.max(...values, 4)
-    const step = (CHART_W - 40) / Math.max(values.length - 1, 1)
-    return values.map((v, i) =>
-      `${i === 0 ? 'M' : 'L'}${(20 + i * step).toFixed(1)},${
-        (CHART_H - 26 - (v / max) * (CHART_H - 46)).toFixed(1)}`).join(' ')
-  }
-
-  const hourLabels = useMemo(() => {
-    if (!throughput.length) return []
-    return throughput
-      .filter((_, i) => i % Math.ceil(throughput.length / 5) === 0)
-      .map((t) => t.hour)
-  }, [throughput])
-
-  const statusBars = useMemo(() => {
-    const counts = board?.statusCountsToday
-    if (!counts) return []
-    const total = Math.max(
-      Number(counts.SUCCEEDED ?? 0) + Number(counts.RUNNING ?? 0)
-      + Number(counts.FAILED ?? 0) + Number(counts.PENDING ?? 0), 1)
-    return [
-      { label: 'SUCCEEDED', value: Number(counts.SUCCEEDED ?? 0), color: '#12b76a' },
-      { label: 'RUNNING', value: Number(counts.RUNNING ?? 0), color: '#2b7fff' },
-      { label: 'FAILED', value: Number(counts.FAILED ?? 0), color: '#f04438' },
-      { label: 'PENDING', value: Number(counts.PENDING ?? 0), color: '#98a2b3' },
-    ].map((item) => ({ ...item, pct: Math.round((item.value / total) * 100) }))
-  }, [board])
-
-  const skillTop: any[] = board?.skillUsageTop ?? []
-  const maxTop = Math.max(...skillTop.map((s) => Number(s.count)), 1)
-  const failureTop: any[] = board?.failureTop ?? []
-  const failureTopMax = Math.max(...failureTop.map((f) => Number(f.count)), 1)
 
   // ---------- 列表列 ----------
   const recentColumns: ColumnsType<any> = [
@@ -355,7 +283,8 @@ export default function ExecutionsPage() {
       title: '操作', width: 160, fixed: 'right',
       render: (_, row) => (
         <Space size={4}>
-          <Button type="link" size="small" onClick={(e) => { e.stopPropagation(); pick(row) }}>详情</Button>
+          <Button type="link" size="small"
+                  onClick={(e) => { e.stopPropagation(); pick(row) }}>详情</Button>
           {row.status === 'FAILED' && (
             <Button type="link" size="small"
                     onClick={(e) => { e.stopPropagation(); retryTask(row.taskId) }}>重试</Button>
@@ -377,31 +306,19 @@ export default function ExecutionsPage() {
       title: '操作', width: 140,
       render: (_, row) => (
         <Space size={4}>
-          <Button type="link" size="small"
-                  onClick={() => resendCallback(row.taskId)}>重发</Button>
-          <Button type="link" danger size="small"
-                  onClick={() => giveUpCallback(row.taskId)}>放弃</Button>
+          <Button type="link" size="small" onClick={() => resendCallback(row.taskId)}>重发</Button>
+          <Button type="link" danger size="small" onClick={() => giveUpCallback(row.taskId)}>放弃</Button>
         </Space>
       ),
     },
   ]
-
-  function paginationConfig(): TablePaginationConfig {
-    return {
-      current: recent.pageNo,
-      pageSize: recent.pageSize,
-      total: recent.total,
-      showSizeChanger: false,
-      onChange: (page, size) => loadRecent(range, filters, page, size),
-    }
-  }
 
   return (
     <div>
       <div className="page-header">
         <div>
           <h2>执行监控</h2>
-          <p className="sub">skill-execute 链路实时视图 · 数据延迟 &lt; 30s</p>
+          <p className="sub">skill-execute 任务定位与干预 · 运行健康/消耗趋势见「总览」</p>
         </div>
         <div className="range-pills" style={{ display: 'flex', gap: 4 }}>
           {([24, 168, 720] as Range[]).map((r) => (
@@ -409,7 +326,10 @@ export default function ExecutionsPage() {
               key={r}
               className={`pill${range === r ? ' active' : ''}`}
               data-testid={`range-${r}`}
-              onClick={() => setRange(r)}
+              onClick={() => {
+                setRangeState(r)
+                loadRecent(r, filters, recent.pageNo, recent.pageSize)
+              }}
             >
               {r === 24 ? '今日' : r === 168 ? '近 7 天' : '近 30 天'}
             </button>
@@ -419,129 +339,8 @@ export default function ExecutionsPage() {
         </div>
       </div>
 
-      {/* 4 统计卡 */}
-      <div className="stat-grid">
-        <div className="stat-card">
-          <div>
-            <div className="label">队列深度（PENDING）</div>
-            <div className="value">{board?.queueDepth ?? '—'} <small>条</small></div>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div>
-            <div className="label">PENDING 年龄 P99</div>
-            <div className="value">{board?.pendingAgeP99Minutes ?? '—'} <small>min</small></div>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div>
-            <div className="label">成功率（{rangeLabel}）</div>
-            <div className="value">{board?.successRateToday ?? '—'} <small>%</small></div>
-            <div className="foot">
-              ▲ 完成 {board?.statusCountsToday?.SUCCEEDED ?? 0} · ▼ 失败 {board?.statusCountsToday?.FAILED ?? 0}
-            </div>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div>
-            <div className="label">失败 Top 错误码（{rangeLabel}）</div>
-            <div className="value mono" style={{ fontSize: 18 }}>
-              {failureTop[0]?.errorCode ?? '—'}
-            </div>
-            <div className="foot">
-              {failureTop[0] ? `× ${failureTop[0].count}` : '无失败'}
-              {failureTop.length > 1 && <span> 共 {failureTop.length} 种 · 明细见状态分布</span>}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 吞吐图 + 状态分布 */}
-      <Row gutter={14}>
-        <Col span={13}>
-          <Card title="任务吞吐（受理 / 完成）" size="small">
-            <svg viewBox={`0 0 ${CHART_W} ${CHART_H}`} width="100%" height={CHART_H}>
-              <defs>
-                <linearGradient id="fillBlue" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#2b7fff" stopOpacity={0.18} />
-                  <stop offset="100%" stopColor="#2b7fff" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              {throughput.length > 1 && (
-                <path
-                  d={`${linePath('accepted')} L${CHART_W - 20},${CHART_H - 26} L20,${CHART_H - 26} Z`}
-                  fill="url(#fillBlue)" stroke="none"
-                />
-              )}
-              {throughput.length > 1 && (
-                <path d={linePath('accepted')} fill="none" stroke="#2b7fff" strokeWidth={2} />
-              )}
-              {throughput.length > 1 && (
-                <path d={linePath('completed')} fill="none" stroke="#12b76a" strokeWidth={2} />
-              )}
-              {throughput.length > 1 && hourLabels.map((label: string, i: number) => (
-                <text
-                  key={label + i}
-                  x={20 + i * ((CHART_W - 40) / 5)}
-                  y={CHART_H - 6}
-                  fontSize={10}
-                  fill="#98a2b3"
-                >
-                  {label}
-                </text>
-              ))}
-            </svg>
-            <div className="chart-legend">
-              <span><i className="dot-line" style={{ background: '#2b7fff' }} />受理</span>
-              <span><i className="dot-line" style={{ background: '#12b76a' }} />完成</span>
-            </div>
-          </Card>
-        </Col>
-        <Col span={11}>
-          <Card title={`任务状态分布（${rangeLabel}）`} size="small">
-            {statusBars.map((bar) => (
-              <div key={bar.label} className="bar-row">
-                <span className="bar-label">{bar.label}</span>
-                <div className="bar-track">
-                  <div className="bar-fill" style={{ width: `${bar.pct}%`, background: bar.color }} />
-                </div>
-                <span className="bar-val">{bar.value.toLocaleString()}</span>
-              </div>
-            ))}
-            {failureTop.length > 0 && <div className="sub-head">失败原因 Top5</div>}
-            {failureTop.map((f) => (
-              <div key={f.errorCode} className="bar-row">
-                <span className="bar-label mono" style={{ width: 130 }}>{f.errorCode}</span>
-                <div className="bar-track">
-                  <div className="bar-fill"
-                       style={{ width: `${(Number(f.count) / failureTopMax) * 100}%`, background: '#f04438' }} />
-                </div>
-                <span className="bar-val">{Number(f.count).toLocaleString()}</span>
-              </div>
-            ))}
-          </Card>
-        </Col>
-      </Row>
-
-      {/* Skill 用量 Top5 */}
-      <Card title="Skill 用量 Top 5" size="small" style={{ marginTop: 14 }}>
-        {skillTop.map((s) => (
-          <div key={s.skillCode} className="bar-row">
-            <span className="bar-label" style={{ width: 160 }}>{s.skillCode}</span>
-            <div className="bar-track">
-              <div className="bar-fill"
-                   style={{ width: `${(Number(s.count) / maxTop) * 100}%`, background: '#2b7fff' }} />
-            </div>
-            <span className="bar-val">{Number(s.count).toLocaleString()}</span>
-          </div>
-        ))}
-        {skillTop.length === 0 && <Empty description="暂无执行数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />}
-      </Card>
-
-      {/* 任务列表 + 异常处理台 */}
-      <Card style={{ marginTop: 14 }}>
+      <Card>
         <Tabs
-          defaultActiveKey="list"
           items={[
             {
               key: 'list',
@@ -562,25 +361,17 @@ export default function ExecutionsPage() {
                       />
                       <Input value={filters.skill} placeholder="Skill 搜索" allowClear
                              style={{ width: 170 }}
-                             onChange={(e) => {
-                               const v = e.target.value
-                               setFilters((prev) => ({ ...prev, skill: v }))
-                               // 清空（allowClear ×）即刷
-                               if (v === '' && filters.skill !== '') applyWith({ skill: '' })
-                             }}
+                             onChange={(e) => setFilters((prev) => ({ ...prev, skill: e.target.value }))}
                              onPressEnter={() => applyWith({ skill: filters.skill })} />
                       <Input value={filters.tenant} placeholder="租户" allowClear
                              style={{ width: 150 }}
-                             onChange={(e) => {
-                               const v = e.target.value
-                               setFilters((prev) => ({ ...prev, tenant: v }))
-                               if (v === '' && filters.tenant !== '') applyWith({ tenant: '' })
-                             }}
+                             onChange={(e) => setFilters((prev) => ({ ...prev, tenant: e.target.value }))}
                              onPressEnter={() => applyWith({ tenant: filters.tenant })} />
                       <Checkbox checked={filters.onlyFailed}
                                 onChange={(e) => applyWith({ onlyFailed: e.target.checked })}
                       >仅看失败</Checkbox>
-                      <Button type="primary" size="small" onClick={applyFilters}>筛选</Button>
+                      <Button type="primary" size="small"
+                              onClick={() => applyWith({})}>筛选</Button>
                       <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
                         <Input
                           value={taskIdInput}
@@ -602,7 +393,13 @@ export default function ExecutionsPage() {
                     columns={recentColumns}
                     dataSource={recent.items}
                     loading={recentLoading}
-                    pagination={paginationConfig()}
+                    pagination={{
+                      current: recent.pageNo,
+                      pageSize: recent.pageSize,
+                      total: recent.total,
+                      showSizeChanger: false,
+                      onChange: (page, size) => loadRecent(range, filters, page, size),
+                    }}
                     onRow={(row) => ({ onClick: () => pick(row), style: { cursor: 'pointer' } })}
                     onChange={onTableChange}
                     scroll={{ x: 1100 }}
@@ -696,8 +493,7 @@ export default function ExecutionsPage() {
                 </h4>
                 <Table size="small" rowKey="artifactId" dataSource={execution.artifacts}
                        pagination={false} data-testid="artifacts-table">
-                  <Table.Column title="产物" dataIndex="artifactId" width={220}
-                                className="mono" />
+                  <Table.Column title="产物" dataIndex="artifactId" width={220} className="mono" />
                   <Table.Column title="类型" dataIndex="type" width={100} />
                   <Table.Column title="大小 (B)" dataIndex="sizeBytes" width={100} />
                   <Table.Column title="查看 / 下载" width={170}
@@ -727,7 +523,7 @@ export default function ExecutionsPage() {
             <ModelCallTable taskId={execution.taskId} />
           </>
         )}
-        {!execution && <div v-loading style={{ minHeight: 200 }} />}
+        {!execution && <div style={{ minHeight: 200 }} />}
       </Drawer>
 
       {/* 入参 JSON 查看 */}

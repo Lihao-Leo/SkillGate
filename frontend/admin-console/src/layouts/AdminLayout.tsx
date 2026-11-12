@@ -4,7 +4,7 @@ import { ProLayout } from '@ant-design/pro-components'
 import type { ProLayoutProps } from '@ant-design/pro-components'
 import {
   AlertOutlined, ApiOutlined, AppstoreOutlined, BellOutlined, DatabaseOutlined,
-  FundViewOutlined, KeyOutlined, LogoutOutlined, MoonOutlined, PieChartOutlined,
+  FundViewOutlined, KeyOutlined, LogoutOutlined, MonitorOutlined, MoonOutlined, PieChartOutlined,
   SettingOutlined, SunOutlined, UserOutlined, WalletOutlined,
 } from '@ant-design/icons'
 import { Dropdown } from 'antd'
@@ -20,7 +20,8 @@ const MENU_GROUPS: MenuGroup[] = [
   {
     title: '运营',
     items: [
-      { path: '/executions', name: '执行监控', icon: <FundViewOutlined />, perm: 'execution:read' },
+      { path: '/', name: '总览', icon: <FundViewOutlined />, perm: 'metrics:read' },
+      { path: '/executions', name: '执行监控', icon: <MonitorOutlined />, perm: 'execution:read' },
       { path: '/skills', name: 'Skill 管理', icon: <AppstoreOutlined />, perm: 'skill:read' },
     ],
   },
