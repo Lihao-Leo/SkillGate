@@ -14,6 +14,9 @@
 
 ## 页面预览
 
+> 管理后台已升级 **React 18 + Ant Design 5（ProLayout）**，并新增「总览」首页（运行健康 + 消耗总览合并）、
+> 消耗看板、问题工单、日志查询、双层限流配额管理。下方截图为上一版界面（功能一致，布局已升级），最新界面截图待补充。
+
 | **执行监控 · 看板与列表** | **任务详情 · 执行链路流水线** |
 |---|---|
 | ![执行监控](docs/images/screenshots/admin-executions.png) | ![执行链路](docs/images/screenshots/admin-execution-drawer.png) |
@@ -23,6 +26,20 @@
 | ![告警配置](docs/images/screenshots/admin-alert-config.png) | ![Skill 管理](docs/images/screenshots/admin-skills.png) |
 | 点数充值（用户端） | 登录 / 注册（用户端） |
 | ![点数充值](docs/images/screenshots/portal-recharge.png) | ![登录注册](docs/images/screenshots/portal-login.png) |
+
+### 管理后台功能矩阵（V2.3）
+
+| 模块 | 能力 |
+|---|---|
+| **总览（首页）** | 运行健康 KPI（队列 / 成功率 / P99 / 告警）+ 消耗总览 KPI（30 天点数 / tokens / 调用 / 失败成本）+ 日消耗趋势 + Skill 排行 + 快捷入口 |
+| **执行监控** | 任务筛选定位（状态 / Skill / 租户 / 仅看失败 / 排序）· 详情抽屉（时间线 / CI-CD 流程图 / 模型调用明细 / 产物预览）· 强制终止 / 重试 / 回调死信台 |
+| **Skill 管理** | 上传校验（CODE/AGENT 自动识别）· 版本审核（通过 / 驳回留痕）· 秒级回滚 · 上/下架二次确认 · 单 Skill 监控 Tab · 试运行 |
+| **消耗看板** | Token 与费用聚合（按 Skill / 模型 / 租户 / 按日）· 失败成本 · 任务对照（成本 vs 定价收入）· 月度预算与阈值告警 |
+| **告警中心 + 问题工单** | 阈值规则热生效 · 告警认领 · 一键转工单（归因 → 修复 → 验证 → 关单） |
+| **日志查询** | FREE 分发埋点（skill_io_log）+ 任务事件链（execution_event）跨运行检索 |
+| **AppKey 与账户** | 签发 / 轮换 / 入账 · **Key 级 + 租户汇总双层限流配额**（QPS / 并发 / 日量，实时生效） |
+| **模型与能力** | alias 路由 + 回退链 · 供应商目录下拉 · 连通性测试 · 费率（驱动消耗看板成本折算） |
+| **知识库 / 系统配置** | KB 文档入库 · 全局配额 · 飞书告警通道 |
 
 > 更多时序图（上传审核 / 执行 / 计费 / 支付）见 [`docs/images/`](docs/images/)，完整技术方案见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
@@ -44,11 +61,11 @@ recharge-service（充值平台：订单 / 支付渠道 / C 端用户）──or
 
 | 模块 | 技术栈 | 职责 |
 |---|---|---|
-| [skill-gateway](skill-gateway/) | Java / Spring Boot | 统一接入网关：HMAC 鉴权、三级限流（QPS / 租户并发 / 日调用量）、计费预校验与冻结、调度入 MQ、执行查询/取消/重试、Skill 生命周期与市场、素材双通道、模型网关、FREE 埋点 |
+| [skill-gateway](skill-gateway/) | Java / Spring Boot | 统一接入网关：HMAC 鉴权、双层限流（Key 级 / 租户汇总：QPS / 并发 / 日调用量）、计费预校验与冻结、调度入 MQ、执行查询/取消/重试、Skill 生命周期与市场、素材双通道、模型网关、FREE 埋点 |
 | [billing-service](billing-service/) | Java / Spring Boot | 点数账户（key 即账户）、冻结 / 结算 / 退款、不可变流水、FROZEN 超 24h 对账兜底；独立部署独立库 |
 | [skill-worker](skill-worker/) | Python | 消费 `skill-execute`，每任务编排为一个加固 K8s Job 沙箱；先落产物 → 再结算 → 最后置终态；看门狗故障自愈；回调 HMAC 签名 + 1/5/15min 退避重试；飞书群告警（长跑 / 失败 / token 超限） |
 | [recharge-service](recharge-service/) | Java / Spring Boot | 充值平台：订单状态机、支付渠道抽象（微信 Native / 支付宝骨架 / Mock）、C 端用户体系；独立部署独立库 |
-| [frontend/admin-console](frontend/admin-console/) | React 18 + Ant Design 5 + ProComponents | 管理后台：执行监控（时间线 / CI-CD 流程图 / 大屏 / 暗色 / 强制终止）、Skill 管理、AppKey 与账户、模型路由、KB、系统配置（含飞书告警） |
+| [frontend/admin-console](frontend/admin-console/) | React 18 + Ant Design 5 + ProComponents | 管理后台：总览首页（运行健康+消耗总览）、执行监控（时间线 / 流程图 / 模型调用明细 / 产物预览 / 大屏 / 强制终止）、Skill 管理（审核 / 回滚 / 单 Skill 监控）、消耗看板（预算 / 成本收入对账）、告警中心+问题工单、日志查询、双层限流配额、模型路由、KB、系统配置 |
 | [frontend/user-portal](frontend/user-portal/) | React 18 + Ant Design 5 | 用户中心：充值、APIKey 管理、流水、任务查询 |
 
 ## 核心机制速览

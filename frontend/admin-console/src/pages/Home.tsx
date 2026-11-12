@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Card, Space, Tag } from 'antd'
 import {
-  AlertOutlined, ApiOutlined, AppstoreOutlined, FundViewOutlined, KeyOutlined,
-  PieChartOutlined, WalletOutlined,
+  AlertOutlined, ApiOutlined, AppstoreOutlined, DatabaseOutlined, FundViewOutlined,
+  KeyOutlined, PieChartOutlined, SettingOutlined, UserOutlined, WalletOutlined,
 } from '@ant-design/icons'
 import { gatewayApi } from '../api/gateway'
 
@@ -97,19 +97,32 @@ export default function HomePage() {
     .filter((_, i) => i % Math.ceil(Math.max(daily.length, 1) / 6) === 0)
     .map((d) => String(d.day).slice(5)), [daily])
 
-  const entries = [
-    { path: '/executions', title: '执行监控', desc: '任务列表 · 筛选 · 干预',
-      icon: <FundViewOutlined /> },
-    { path: '/skills', title: 'Skill 管理', desc: '上传 · 审核 · 版本回滚',
-      icon: <AppstoreOutlined /> },
-    { path: '/consumption', title: '消耗看板', desc: '预算 · 四维聚合 · 任务对账',
-      icon: <PieChartOutlined /> },
-    { path: '/keys', title: 'AppKey 与账户', desc: '签发 · 轮换 · 入账',
-      icon: <KeyOutlined /> },
-    { path: '/models', title: '模型与能力', desc: '别名路由 · 连通性测试',
-      icon: <ApiOutlined /> },
-    { path: '/alerts', title: '告警中心', desc: '规则 · 记录认领',
-      icon: <AlertOutlined /> },
+  /** 功能导览（全模块矩阵，带能力说明；按权限过滤由菜单承担，此处全展示供发现） */
+  const modules = [
+    { path: '/', title: '总览', desc: '运行健康 + 消耗总览一屏尽览',
+      icon: <FundViewOutlined />, color: '#2b7fff' },
+    { path: '/executions', title: '执行监控', desc: '任务筛选定位 · 时间线/流程图 · 强制终止/重试 · 回调死信台',
+      icon: <FundViewOutlined />, color: '#12b76a' },
+    { path: '/skills', title: 'Skill 管理', desc: '上传校验 · 版本审核 · 秒级回滚 · 单 Skill 监控 · 试运行',
+      icon: <AppstoreOutlined />, color: '#7b5bf5' },
+    { path: '/consumption', title: '消耗看板', desc: 'Token/费用聚合 · 失败成本 · 月度预算告警 · 成本收入对账',
+      icon: <PieChartOutlined />, color: '#f79009' },
+    { path: '/alerts', title: '告警中心', desc: '阈值规则热生效 · 告警认领 · 一键转工单',
+      icon: <AlertOutlined />, color: '#f04438' },
+    { path: '/issues', title: '问题工单', desc: '归因 → 修复 → 验证 → 关单闭环',
+      icon: <AlertOutlined />, color: '#f04438' },
+    { path: '/logs', title: '日志查询', desc: '分发埋点 + 任务事件链跨运行检索',
+      icon: <FundViewOutlined />, color: '#475467' },
+    { path: '/keys', title: 'AppKey 与账户', desc: 'Key 级/租户双层限流配额 · 签发轮换 · 点数入账',
+      icon: <KeyOutlined />, color: '#12b76a' },
+    { path: '/models', title: '模型与能力', desc: 'alias 路由 + 回退链 · 供应商目录 · 连通性测试',
+      icon: <ApiOutlined />, color: '#7b5bf5' },
+    { path: '/kb', title: '知识库', desc: '文档入库 · 分块向量化检索',
+      icon: <DatabaseOutlined />, color: '#16a34a' },
+    { path: '/users', title: '用户与角色', desc: '角色权限点 · 密码轮换',
+      icon: <UserOutlined />, color: '#475467' },
+    { path: '/sysconfig', title: '系统配置', desc: '全局配额 · 飞书告警通道热生效',
+      icon: <SettingOutlined />, color: '#475467' },
   ]
 
   return (
@@ -179,7 +192,7 @@ export default function HomePage() {
           </div>
         </Card>
 
-        {/* Skill 用量排行 + 告警 + 快捷入口 */}
+        {/* Skill 用量排行 + 告警 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <Card title="Skill 用量排行（24h）" size="small">
             {skillTop.length === 0 && (
@@ -211,18 +224,18 @@ export default function HomePage() {
             )}
           </Card>
 
-          <Card title="快捷入口" size="small">
+          <Card title="功能导览" size="small">
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              {entries.map((entry) => (
-                <Card key={entry.path} size="small" hoverable style={{ cursor: 'pointer' }}
-                      onClick={() => navigate(entry.path)}>
+              {modules.filter((m) => m.path !== '/').map((m) => (
+                <Card key={m.path} size="small" hoverable style={{ cursor: 'pointer' }}
+                      onClick={() => navigate(m.path)}>
                   <Space size={8}>
-                    {entry.icon}
+                    <span style={{ color: m.color, fontSize: 16 }}>{m.icon}</span>
                     <div>
-                      <b style={{ fontSize: 13 }}>{entry.title}</b>
+                      <b style={{ fontSize: 13 }}>{m.title}</b>
                       <div style={{
                         color: 'var(--ant-color-text-tertiary)', fontSize: 11.5,
-                      }}>{entry.desc}</div>
+                      }}>{m.desc}</div>
                     </div>
                   </Space>
                 </Card>
