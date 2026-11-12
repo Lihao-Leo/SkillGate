@@ -39,6 +39,8 @@ const MENU_GROUPS: MenuGroup[] = [
       { path: '/models', name: '模型与能力', icon: <ApiOutlined />, perm: 'model:read' },
       { path: '/kb', name: '知识库', icon: <DatabaseOutlined />, perm: 'kb:manage' },
       { path: '/alerts', name: '告警中心', icon: <AlertOutlined />, perm: 'alert:read' },
+      { path: '/issues', name: '问题工单', icon: <AlertOutlined />, perm: 'issue:read' },
+      { path: '/logs', name: '日志查询', icon: <FundViewOutlined />, perm: 'execution:read' },
       { path: '/sysconfig', name: '系统配置', icon: <SettingOutlined />, perm: 'sysconfig:read' },
     ],
   },

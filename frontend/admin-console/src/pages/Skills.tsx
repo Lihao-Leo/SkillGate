@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Alert, App as AntdApp, Button, Card, Col, Drawer, Form, Input, InputNumber, Modal, Radio,
-  Row, Select, Space, Switch, Table, Tag, Tooltip,
+  Row, Select, Space, Switch, Table, Tabs, Tag, Tooltip,
 } from 'antd'
 import { UploadOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
@@ -10,6 +10,7 @@ import type { SkillDetail, SkillPage, SkillSummary, SkillVersionView } from '../
 import { hasPerm, useAuthStore } from '../stores/auth'
 import { appKeyReady, useCredentialsStore } from '../stores/credentials'
 import { usePrompt } from '../components/PromptModal'
+import SkillMonitorPanel from '../components/SkillMonitorPanel'
 
 const visibilityText: Record<string, string> = { PUBLIC: '公开', PRIVATE: '私有' }
 
@@ -793,7 +794,13 @@ export default function SkillsPage() {
         onClose={() => setDetailOpen(false)}
       >
         {detail && (
-          <>
+          <Tabs
+            defaultActiveKey="info"
+            items={[
+              {
+                key: 'info', label: '版本与配置',
+                children: (
+                  <>
             <h4 className="drawer-title">
               版本列表 <span className="sub">sha256 / changelog / 审核状态</span>
             </h4>
@@ -836,7 +843,18 @@ export default function SkillsPage() {
                 </Button>
               </Form.Item>
             </Form>
-          </>
+                  </>
+                ),
+              },
+              {
+                key: 'monitor', label: '监控',
+                children: detail && (
+                  <SkillMonitorPanel tenantId={detail.skill.tenantId}
+                                     skillCode={detail.skill.skillCode} />
+                ),
+              },
+            ]}
+          />
         )}
       </Drawer>
 

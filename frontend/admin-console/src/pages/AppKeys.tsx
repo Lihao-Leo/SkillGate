@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { App as AntdApp, Button, Card, Form, Input, InputNumber, Modal, Space, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { gatewayApi } from '../api/gateway'
-import type { AdminKeyPage } from '../api/gateway'
+import type { AdminKeyPage, TenantQuotaView } from '../api/gateway'
 import { clearCredentials, saveCredentials, useCredentialsStore } from '../stores/credentials'
 
 interface OnceDialog {
@@ -20,6 +20,24 @@ interface RechargeDialog {
   submitting: boolean
 }
 
+interface QuotaDialog {
+  open: boolean
+  appKeyId: string
+  qps: number | null
+  maxRunning: number | null
+  dailyLimit: number | null
+  submitting: boolean
+}
+
+interface TenantQuotaDialog {
+  open: boolean
+  tenantId: string
+  qps: number | null
+  maxRunning: number | null
+  dailyLimit: number | null
+  remark: string
+}
+
 export default function AppKeysPage() {
   const navigate = useNavigate()
   const { message } = AntdApp.useApp()
@@ -30,6 +48,58 @@ export default function AppKeysPage() {
   const [once, setOnce] = useState<OnceDialog>({ open: false, appKeyId: '', appSecret: '' })
   const [recharge, setRecharge] = useState<RechargeDialog>(
     { open: false, appKeyId: '', points: 100, orderNo: '', submitting: false })
+  const [quota, setQuota] = useState<QuotaDialog>(
+    { open: false, appKeyId: '', qps: null, maxRunning: null, dailyLimit: null, submitting: false })
+  const [tenantQuotas, setTenantQuotas] = useState<TenantQuotaView[]>([])
+  const [tqOpen, setTqOpen] = useState(false)
+  const [tq, setTq] = useState<TenantQuotaDialog>(
+    { open: false, tenantId: '', qps: null, maxRunning: null, dailyLimit: null, remark: '' })
+
+  async function loadTenantQuotas() {
+    try {
+      setTenantQuotas(await gatewayApi.adminListTenantQuotas())
+    } catch { /* 失败容忍 */ }
+  }
+
+  async function saveKeyQuota() {
+    setQuota((prev) => ({ ...prev, submitting: true }))
+    try {
+      await gatewayApi.adminUpdateKeyQuota(quota.appKeyId, {
+        qps: quota.qps, maxRunning: quota.maxRunning, dailyLimit: quota.dailyLimit,
+      })
+      message.success('配额已更新（实时生效）')
+      setQuota((prev) => ({ ...prev, open: false, submitting: false }))
+    } catch (e) {
+      message.error((e as Error).message)
+      setQuota((prev) => ({ ...prev, submitting: false }))
+    }
+  }
+
+  async function saveTenantQuota() {
+    if (!tq.tenantId.trim()) {
+      message.warning('租户 ID 必填')
+      return
+    }
+    try {
+      await gatewayApi.adminUpsertTenantQuota(tq.tenantId.trim(),
+        { qps: tq.qps, maxRunning: tq.maxRunning, dailyLimit: tq.dailyLimit, remark: tq.remark })
+      message.success('租户配额已保存（实时生效）')
+      setTq((prev) => ({ ...prev, open: false }))
+      await loadTenantQuotas()
+    } catch (e) {
+      message.error((e as Error).message)
+    }
+  }
+
+  async function deleteTenantQuota(tenantId: string) {
+    try {
+      await gatewayApi.adminDeleteTenantQuota(tenantId)
+      message.success('已删除（该租户恢复仅 Key 级限流）')
+      await loadTenantQuotas()
+    } catch (e) {
+      message.error((e as Error).message)
+    }
+  }
 
   async function load(pageNo = query.pageNo, pageSize = query.pageSize, tenantId = query.tenantId) {
     setLoading(true)
@@ -41,7 +111,7 @@ export default function AppKeysPage() {
       setLoading(false)
     }
   }
-  useEffect(() => { load(1) /* eslint-disable-line react-hooks/exhaustive-deps */ }, [])
+  useEffect(() => { load(1); loadTenantQuotas() /* eslint-disable-line react-hooks/exhaustive-deps */ }, [])
 
   async function toggleStatus(appKeyId: string, current: number) {
     const next = current === 1 ? 0 : 1
@@ -127,6 +197,10 @@ export default function AppKeysPage() {
           </Button>
           <Button type="link" size="small" onClick={() => resetSecret(row.appKeyId)}
                   data-testid={`reset-${row.appKeyId}`}>重置 Secret</Button>
+          <Button type="link" size="small" onClick={() => setQuota({
+            open: true, appKeyId: row.appKeyId,
+            qps: null, maxRunning: null, dailyLimit: null, submitting: false,
+          })} data-testid={`quota-${row.appKeyId}`}>配额</Button>
           <Button type="link" size="small"
                   onClick={() => setRecharge((prev) => ({
                     ...prev, open: true, appKeyId: row.appKeyId, points: 100, orderNo: '',
@@ -155,6 +229,9 @@ export default function AppKeysPage() {
           <Button type="primary" onClick={() => setRecharge((prev) => ({
             ...prev, open: true, appKeyId: '', points: 100, orderNo: '',
           }))}>人工入账</Button>
+          <Button data-testid="tenant-quota-btn"
+                  onClick={() => { setTq({ open: true, tenantId: '', qps: null, maxRunning: null,
+                    dailyLimit: null, remark: '' }) }}>租户配额</Button>
         </Space>
       </div>
 
@@ -192,6 +269,93 @@ export default function AppKeysPage() {
         <p>AppSecret（完整值仅此一次展示，关闭后不可恢复）：</p>
         <span className="secret-line" data-testid="once-appsecret">{once.appSecret}</span>
       </Modal>
+
+      {/* Key 级配额编辑（双层限流第 1 层；实时生效） */}
+      <Modal
+        open={quota.open}
+        title={`Key 配额 · ${quota.appKeyId}`}
+        width={440}
+        onCancel={() => setQuota((prev) => ({ ...prev, open: false }))}
+        footer={null}
+      >
+        <Form layout="vertical" onFinish={saveKeyQuota}>
+          <Form.Item label="QPS">
+            <InputNumber min={1} style={{ width: '100%' }} value={quota.qps}
+                         placeholder="留空 = 跟随全局默认"
+                         onChange={(v) => setQuota((prev) => ({ ...prev, qps: v }))} />
+          </Form.Item>
+          <Form.Item label="最大并行">
+            <InputNumber min={1} style={{ width: '100%' }} value={quota.maxRunning}
+                         placeholder="留空 = 跟随全局默认"
+                         onChange={(v) => setQuota((prev) => ({ ...prev, maxRunning: v }))} />
+          </Form.Item>
+          <Form.Item label="日调用量上限">
+            <InputNumber min={1} style={{ width: '100%' }} value={quota.dailyLimit}
+                         placeholder="留空 = 跟随全局默认"
+                         onChange={(v) => setQuota((prev) => ({ ...prev, dailyLimit: v }))} />
+          </Form.Item>
+          <Button type="primary" htmlType="submit" block loading={quota.submitting}
+                  data-testid="quota-save">保存配额</Button>
+        </Form>
+      </Modal>
+
+      {/* 租户汇总配额（双层限流第 2 层） */}
+      <Modal
+        open={tq.open}
+        title="租户汇总配额（双层限流第 2 层）"
+        width={480}
+        onCancel={() => setTq((prev) => ({ ...prev, open: false }))}
+        footer={null}
+      >
+        <Form layout="vertical" onFinish={saveTenantQuota}>
+          <Form.Item label="租户 ID" required>
+            <Input data-testid="tq-tenant" value={tq.tenantId}
+                   placeholder="如 recharge-user-7"
+                   onChange={(e) => setTq((prev) => ({ ...prev, tenantId: e.target.value }))} />
+          </Form.Item>
+          <Form.Item label="租户 QPS">
+            <InputNumber min={1} style={{ width: '100%' }} value={tq.qps}
+                         placeholder="NULL = 该维度不限"
+                         onChange={(v) => setTq((prev) => ({ ...prev, qps: v }))} />
+          </Form.Item>
+          <Form.Item label="租户并发上限">
+            <InputNumber min={1} style={{ width: '100%' }} value={tq.maxRunning}
+                         placeholder="NULL = 回落 key 配额/全局默认"
+                         onChange={(v) => setTq((prev) => ({ ...prev, maxRunning: v }))} />
+          </Form.Item>
+          <Form.Item label="租户日调用量">
+            <InputNumber min={1} style={{ width: '100%' }} value={tq.dailyLimit}
+                         placeholder="NULL = 不限"
+                         onChange={(v) => setTq((prev) => ({ ...prev, dailyLimit: v }))} />
+          </Form.Item>
+          <Form.Item label="备注">
+            <Input value={tq.remark}
+                   onChange={(e) => setTq((prev) => ({ ...prev, remark: e.target.value }))} />
+          </Form.Item>
+          <Button type="primary" htmlType="submit" block>保存</Button>
+        </Form>
+      </Modal>
+
+      {/* 租户配额列表（已有行管理） */}
+      {tenantQuotas.length > 0 && (
+        <Card title="已配置租户配额" size="small" style={{ marginTop: 16 }}>
+          <Table size="small" rowKey="tenantId" dataSource={tenantQuotas} pagination={false}
+                 data-testid="tenant-quota-table">
+            <Table.Column title="租户" dataIndex="tenantId" className="mono" />
+            <Table.Column title="QPS" dataIndex="qps" align="right"
+                          render={(v: number | null) => v ?? '不限'} />
+            <Table.Column title="并发" dataIndex="maxRunning" align="right"
+                          render={(v: number | null) => v ?? '回落 key'} />
+            <Table.Column title="日调用量" dataIndex="dailyLimit" align="right"
+                          render={(v: number | null) => v ?? '不限'} />
+            <Table.Column title="操作" width={80}
+                          render={(_, row: TenantQuotaView) => (
+                            <Button type="link" danger size="small"
+                                    onClick={() => deleteTenantQuota(row.tenantId)}>删除</Button>
+                          )} />
+          </Table>
+        </Card>
+      )}
 
       {/* 人工入账（orderNo 幂等） */}
       <Modal

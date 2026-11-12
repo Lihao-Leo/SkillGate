@@ -490,3 +490,72 @@ INSERT INTO admin_role_permission (role_code, perm_code) VALUES
     ('OPS', 'consumption:read'), ('OPS', 'consumption:manage'),
     ('VIEWER', 'consumption:read'), ('SKILL_MANAGER', 'consumption:read')
 ON DUPLICATE KEY UPDATE role_code = VALUES(role_code);
+
+-- ============================================================
+-- V2.3_1 增量（租户双层限流配额、问题工单、单 Skill 监控索引）
+-- ============================================================
+
+-- ① 租户汇总配额（双层限流第 2 层；有行才启用租户级检查，行内 NULL=该维度不限）
+CREATE TABLE IF NOT EXISTS `tenant_quota` (
+    `id`          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '自增主键',
+    `tenant_id`   VARCHAR(64)  NOT NULL COMMENT '租户标识',
+    `qps`         INT          NULL COMMENT '租户聚合 QPS（NULL=不限）',
+    `max_running` INT          NULL COMMENT '租户并发上限（NULL=回落 key 配额/全局默认）',
+    `daily_limit` INT          NULL COMMENT '租户日调用量（NULL=不限）',
+    `remark`      VARCHAR(256) NULL COMMENT '备注',
+    `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_tenant_quota` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='租户汇总限流配额（双层限流第2层）';
+
+-- ② 问题工单（告警/失败任务/手工三类来源；uk(type,source_id) 幂等转单）
+CREATE TABLE IF NOT EXISTS `issue` (
+    `id`              BIGINT       NOT NULL AUTO_INCREMENT COMMENT '自增主键',
+    `ticket_no`       VARCHAR(40)  NOT NULL COMMENT '工单号 tk- 前缀全局唯一',
+    `title`           VARCHAR(256) NOT NULL COMMENT '工单标题',
+    `type`            VARCHAR(32)  NOT NULL COMMENT '来源类型：ALERT/EXECUTION_FAILED/MANUAL',
+    `severity`        VARCHAR(16)  NOT NULL DEFAULT 'WARN' COMMENT 'INFO/WARN/CRITICAL',
+    `status`          VARCHAR(16)  NOT NULL DEFAULT 'OPEN' COMMENT 'OPEN/FIXING/RESOLVED/CLOSED',
+    `source_id`       VARCHAR(64)  NULL COMMENT '来源标识：alert_record.id 或 execution.task_id',
+    `related_task_id` VARCHAR(64)  NULL COMMENT '关联执行任务（可跳执行详情）',
+    `tenant_id`       VARCHAR(64)  NULL COMMENT '租户（从来源预填，筛选用）',
+    `skill_code`      VARCHAR(128) NULL COMMENT 'Skill 编码（从来源预填，筛选用）',
+    `description`     TEXT         NULL COMMENT '问题描述',
+    `root_cause`      TEXT         NULL COMMENT '根因',
+    `resolution`      TEXT         NULL COMMENT '解决方案（FIXING→RESOLVED 必填）',
+    `assignee`        VARCHAR(64)  NULL COMMENT '负责人（admin username）',
+    `created_by`      VARCHAR(64)  NOT NULL COMMENT '创建人（admin username）',
+    `created_at`      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
+    `closed_at`       DATETIME     NULL COMMENT '关闭时间（仅 CLOSED 写入，不回退清除）',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_ticket_no` (`ticket_no`),
+    UNIQUE KEY `uk_type_source` (`type`, `source_id`),
+    KEY `idx_issue_status_time` (`status`, `created_at`),
+    KEY `idx_issue_assignee` (`assignee`),
+    KEY `idx_issue_task` (`related_task_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='问题工单（告警/失败任务/手工三类来源）';
+
+-- ③ execution 补单 Skill 监控索引（存量库判存 ALTER；新库由上方基础 DDL 同步建全）
+SET @ddl_idx_exec_skill = (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE execution ADD INDEX idx_skill_created (skill_code, created_at)',
+    'SELECT 1')
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'execution'
+      AND INDEX_NAME = 'idx_skill_created');
+PREPARE stmt_v231 FROM @ddl_idx_exec_skill;
+EXECUTE stmt_v231;
+DEALLOCATE PREPARE stmt_v231;
+
+-- ④ 权限点种子（问题工单）
+INSERT INTO admin_permission (perm_code, perm_name, group_name, sort_no) VALUES
+    ('issue:read',   '工单查看',   '工单',   1),
+    ('issue:manage', '工单管理',   '工单',   2)
+ON DUPLICATE KEY UPDATE perm_name = VALUES(perm_name), group_name = VALUES(group_name), sort_no = VALUES(sort_no);
+
+INSERT INTO admin_role_permission (role_code, perm_code) VALUES
+    ('SUPER_ADMIN', 'issue:read'), ('SUPER_ADMIN', 'issue:manage'),
+    ('OPS', 'issue:read'), ('OPS', 'issue:manage'),
+    ('SKILL_MANAGER', 'issue:read'), ('VIEWER', 'issue:read')
+ON DUPLICATE KEY UPDATE role_code = VALUES(role_code);

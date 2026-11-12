@@ -12,6 +12,7 @@ import ExecutionTimeline from '../components/ExecutionTimeline'
 import StagePipeline from '../components/StagePipeline'
 import ModelCallTable from '../components/ModelCallTable'
 import ArtifactPreviewModal from '../components/ArtifactPreviewModal'
+import { useCreateIssue } from '../components/CreateIssueModal'
 import type { ArtifactView } from '../api/gateway'
 
 type Range = 24 | 168 | 720
@@ -62,6 +63,7 @@ export default function ExecutionsPage() {
   const [inputLoading, setInputLoading] = useState(false)
   const [inputJson, setInputJson] = useState('')
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [createIssueContextHolder, createIssue] = useCreateIssue()
 
   async function loadRecent(rangeValue: Range, currentFilters: typeof filters,
                             pageNo: number, pageSize: number) {
@@ -288,6 +290,20 @@ export default function ExecutionsPage() {
           {row.status === 'FAILED' && (
             <Button type="link" size="small"
                     onClick={(e) => { e.stopPropagation(); retryTask(row.taskId) }}>重试</Button>
+          )}
+          {row.status === 'FAILED' && (
+            <Button type="link" size="small"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      createIssue({
+                        type: 'EXECUTION_FAILED', sourceId: row.taskId,
+                        relatedTaskId: row.taskId, tenantId: row.tenantId,
+                        skillCode: row.skillCode,
+                        title: `${row.skillCode} 执行失败（${row.errorCode ?? 'INTERNAL'}）`,
+                        description: row.errorMessage ?? '',
+                        severity: 'WARN',
+                      })
+                    }}>转工单</Button>
           )}
           {(row.status === 'RUNNING' || row.status === 'PENDING' || row.status === 'CANCELLING') && (
             <Button type="link" danger size="small"

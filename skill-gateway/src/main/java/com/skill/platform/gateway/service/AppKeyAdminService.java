@@ -6,7 +6,9 @@ import com.skill.platform.gateway.billing.BillingClient;
 import com.skill.platform.gateway.billing.BillingViews.RechargeResult;
 import com.skill.platform.gateway.common.Ids;
 import com.skill.platform.gateway.dal.entity.AppKey;
+import com.skill.platform.gateway.dal.entity.TenantQuota;
 import com.skill.platform.gateway.dal.mapper.AppKeyMapper;
+import com.skill.platform.gateway.dal.mapper.TenantQuotaMapper;
 import com.skill.platform.gateway.security.CryptoService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +30,7 @@ public class AppKeyAdminService {
     private final AppKeyMapper appKeyMapper;
     private final BillingClient billingClient;
     private final CryptoService cryptoService;
+    private final TenantQuotaMapper tenantQuotaMapper;
 
     public Map<String, Object> issue(String tenantId, String quota, String callbackDomains) {
         for (String json : new String[]{quota, callbackDomains}) {
@@ -104,6 +107,88 @@ public class AppKeyAdminService {
         appKeyMapper.updateById(appKey);
         log.info("app key status updated: appKey={}, status={}", appKeyId, status);
         return Map.of("appKeyId", appKeyId, "status", status);
+    }
+
+    /**
+     * 改 Key 级配额（V2.3 双层第 1 层）：三字段整体替换，null = 跟随全局默认；
+     * 实时生效（RateLimitService.quotaOf 每请求实时读库）。
+     */
+    public Map<String, Object> updateQuota(String appKeyId,
+                                           Integer qps, Integer maxRunning, Integer dailyLimit) {
+        for (Map.Entry<String, Integer> entry : Map.of(
+                "qps", qps, "maxRunning", maxRunning, "dailyLimit", dailyLimit).entrySet()) {
+            Integer v = entry.getValue();
+            if (v != null && v < 1) {
+                throw new IllegalArgumentException(
+                        entry.getKey() + " 配额必须 ≥ 1（留空 = 跟随全局默认）");
+            }
+        }
+        AppKey appKey = loadKey(appKeyId);
+        String quotaJson = (qps == null && maxRunning == null && dailyLimit == null)
+                ? null
+                : JsonCodec.write(new RateLimitService.Quota(qps, maxRunning, dailyLimit));
+        appKey.setQuota(quotaJson);
+        appKey.setUpdatedAt(LocalDateTime.now());
+        appKeyMapper.updateById(appKey);
+        log.info("app key quota updated: appKey={}, qps={}, maxRunning={}, dailyLimit={}",
+                appKeyId, qps, maxRunning, dailyLimit);
+        return Map.of("appKeyId", appKeyId,
+                "quota", quotaJson == null ? "跟随全局默认" : quotaJson);
+    }
+
+    /** 租户汇总配额列表（双层第 2 层；无行的租户 = 仅 Key 级限流）。 */
+    public List<Map<String, Object>> listTenantQuotas() {
+        return tenantQuotaMapper.selectList(new LambdaQueryWrapper<TenantQuota>()
+                .orderByAsc(TenantQuota::getTenantId))
+                .stream().map(tq -> Map.<String, Object>of(
+                        "tenantId", tq.getTenantId(),
+                        "qps", tq.getQps(),
+                        "maxRunning", tq.getMaxRunning(),
+                        "dailyLimit", tq.getDailyLimit(),
+                        "remark", tq.getRemark() == null ? "" : tq.getRemark()))
+                .toList();
+    }
+
+    /** 租户配额 upsert（存在则更新、不存在插入）。 */
+    public Map<String, Object> upsertTenantQuota(String tenantId,
+                                                 Integer qps, Integer maxRunning,
+                                                 Integer dailyLimit, String remark) {
+        if (tenantId == null || tenantId.isBlank()) {
+            throw new IllegalArgumentException("tenantId 不能为空");
+        }
+        for (Map.Entry<String, Integer> entry : Map.of(
+                "qps", qps, "maxRunning", maxRunning, "dailyLimit", dailyLimit).entrySet()) {
+            Integer v = entry.getValue();
+            if (v != null && v < 1) {
+                throw new IllegalArgumentException(entry.getKey() + " 配额必须 ≥ 1（留空 = 该维度不限）");
+            }
+        }
+        TenantQuota row = tenantQuotaMapper.selectOne(new LambdaQueryWrapper<TenantQuota>()
+                .eq(TenantQuota::getTenantId, tenantId).last("LIMIT 1"));
+        if (row == null) {
+            row = new TenantQuota();
+            row.setTenantId(tenantId);
+        }
+        row.setQps(qps);
+        row.setMaxRunning(maxRunning);
+        row.setDailyLimit(dailyLimit);
+        row.setRemark(remark);
+        if (row.getId() == null) {
+            tenantQuotaMapper.insert(row);
+        } else {
+            tenantQuotaMapper.updateById(row);
+        }
+        log.info("tenant quota upserted: tenant={}, qps={}, maxRunning={}, dailyLimit={}",
+                tenantId, qps, maxRunning, dailyLimit);
+        return Map.of("tenantId", tenantId, "qps", qps,
+                "maxRunning", maxRunning, "dailyLimit", dailyLimit);
+    }
+
+    /** 删除租户配额行：该租户恢复仅 Key 级限流。 */
+    public void deleteTenantQuota(String tenantId) {
+        tenantQuotaMapper.delete(new LambdaQueryWrapper<TenantQuota>()
+                .eq(TenantQuota::getTenantId, tenantId));
+        log.info("tenant quota deleted: tenant={}", tenantId);
     }
 
     public RechargeResult recharge(String appKeyId, long points, String orderNo) {

@@ -102,12 +102,16 @@ public class ExecuteService {
         }
         recordEvent(taskId, caller.tenantId(), "AUTH", "OK", acceptStart, Map.of());
 
-        // ---- ② 限流/配额（QPS / 日调用量；并发占位在动账前获取）----
+        // ---- ② 限流/配额（Key 级 QPS/日量 → 租户汇总层；并发占位在动账前获取）----
         long rateStart = System.nanoTime();
         RateLimitService.Quota quota = rateLimitService.quotaOf(appKey);
+        RateLimitService.TenantQuotaSpec tenantQuota =
+                rateLimitService.tenantQuotaOf(caller.tenantId());
         try {
             rateLimitService.checkQps(caller.appKeyId(), quota);
             rateLimitService.checkDailyQuota(caller.appKeyId(), quota);
+            rateLimitService.checkTenantQps(caller.tenantId(), tenantQuota);
+            rateLimitService.checkTenantDailyQuota(caller.tenantId(), tenantQuota);
         } catch (RuntimeException e) {
             recordEvent(taskId, caller.tenantId(), "RATE_LIMIT", "FAILED", rateStart,
                     Map.of("error_code", String.valueOf(e instanceof BizException be
@@ -147,7 +151,8 @@ public class ExecuteService {
         }
 
         try {
-            rateLimitService.tryAcquireRunning(caller.tenantId(), quota);
+            rateLimitService.tryAcquireRunning(caller.tenantId(), quota,
+                    tenantQuota.maxRunning());
         } catch (RuntimeException e) {
             recordEvent(taskId, caller.tenantId(), "RATE_LIMIT", "FAILED", rateStart,
                     Map.of("error_code", "42901"));

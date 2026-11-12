@@ -6,6 +6,7 @@ import { gatewayApi } from '../api/gateway'
 import type { AlertRecordPage, AlertRecordView, AlertRuleView } from '../api/gateway'
 import { hasPerm, useAuthStore } from '../stores/auth'
 import { usePrompt } from '../components/PromptModal'
+import { useCreateIssue } from '../components/CreateIssueModal'
 
 const RULE_TYPES = [
   { value: 'RUNNING_TIMEOUT', label: '任务运行超时（秒）' },
@@ -45,6 +46,7 @@ export default function AlertsPage() {
   const session = useAuthStore((state) => state.session)
   const canManage = hasPerm(session, 'alert:manage')
   const [promptContextHolder, prompt] = usePrompt()
+  const [createIssueContextHolder, createIssue] = useCreateIssue()
 
   // ---- 规则 ----
   const [rules, setRules] = useState<AlertRuleView[]>([])
@@ -245,12 +247,23 @@ export default function AlertsPage() {
       ),
     },
     ...(canManage ? [{
-      title: '操作', width: 90,
+      title: '操作', width: 160,
       render: (_: unknown, row: AlertRecordView) => (
-        row.status === 'PENDING'
-          ? <Button type="link" size="small" data-testid={`ack-${row.id}`}
+        <Space size={4}>
+          {row.status === 'PENDING' && (
+            <Button type="link" size="small" data-testid={`ack-${row.id}`}
                     onClick={() => openAck(row)}>认领</Button>
-          : null
+          )}
+          <Button type="link" size="small" data-testid={`issue-${row.id}`}
+                  onClick={() => createIssue({
+                    type: 'ALERT', sourceId: String(row.id),
+                    relatedTaskId: row.taskId ?? undefined,
+                    tenantId: row.tenantId ?? undefined,
+                    skillCode: row.skillCode ?? undefined,
+                    title: row.title, description: row.content ?? '',
+                    severity: row.severity,
+                  })}>转工单</Button>
+        </Space>
       ),
     }] : []),
   ]
@@ -258,6 +271,7 @@ export default function AlertsPage() {
   return (
     <div>
       {promptContextHolder}
+      {createIssueContextHolder}
       <div className="page-header">
         <div>
           <h2>告警中心</h2>

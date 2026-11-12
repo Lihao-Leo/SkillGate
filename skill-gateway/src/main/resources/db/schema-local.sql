@@ -431,3 +431,52 @@ MERGE INTO admin_role_permission (role_code, perm_code) KEY(role_code, perm_code
 MERGE INTO admin_role_permission (role_code, perm_code) KEY(role_code, perm_code) VALUES ('OPS', 'consumption:manage');
 MERGE INTO admin_role_permission (role_code, perm_code) KEY(role_code, perm_code) VALUES ('VIEWER', 'consumption:read');
 MERGE INTO admin_role_permission (role_code, perm_code) KEY(role_code, perm_code) VALUES ('SKILL_MANAGER', 'consumption:read');
+
+-- V2.3_1 增量（租户双层限流配额、问题工单）
+CREATE TABLE IF NOT EXISTS tenant_quota (
+    id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id   VARCHAR(64) NOT NULL,
+    qps         INT,
+    max_running INT,
+    daily_limit INT,
+    remark      VARCHAR(256),
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_tenant_quota UNIQUE (tenant_id)
+);
+
+CREATE TABLE IF NOT EXISTS issue (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    ticket_no       VARCHAR(40) NOT NULL,
+    title           VARCHAR(256) NOT NULL,
+    type            VARCHAR(32) NOT NULL,
+    severity        VARCHAR(16) NOT NULL DEFAULT 'WARN',
+    status          VARCHAR(16) NOT NULL DEFAULT 'OPEN',
+    source_id       VARCHAR(64),
+    related_task_id VARCHAR(64),
+    tenant_id       VARCHAR(64),
+    skill_code      VARCHAR(128),
+    description     TEXT,
+    root_cause      TEXT,
+    resolution      TEXT,
+    assignee        VARCHAR(64),
+    created_by      VARCHAR(64) NOT NULL,
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    closed_at       DATETIME,
+    CONSTRAINT uk_ticket_no UNIQUE (ticket_no),
+    CONSTRAINT uk_type_source UNIQUE (type, source_id)
+);
+CREATE INDEX IF NOT EXISTS idx_issue_status_time ON issue (status, created_at);
+CREATE INDEX IF NOT EXISTS idx_issue_assignee ON issue (assignee);
+CREATE INDEX IF NOT EXISTS idx_issue_task ON issue (related_task_id);
+CREATE INDEX IF NOT EXISTS idx_exec_skill_created ON execution (skill_code, created_at);
+
+MERGE INTO admin_permission (perm_code, perm_name, group_name, sort_no) KEY(perm_code) VALUES ('issue:read', '工单查看', '工单', 1);
+MERGE INTO admin_permission (perm_code, perm_name, group_name, sort_no) KEY(perm_code) VALUES ('issue:manage', '工单管理', '工单', 2);
+MERGE INTO admin_role_permission (role_code, perm_code) KEY(role_code, perm_code) VALUES ('SUPER_ADMIN', 'issue:read');
+MERGE INTO admin_role_permission (role_code, perm_code) KEY(role_code, perm_code) VALUES ('SUPER_ADMIN', 'issue:manage');
+MERGE INTO admin_role_permission (role_code, perm_code) KEY(role_code, perm_code) VALUES ('OPS', 'issue:read');
+MERGE INTO admin_role_permission (role_code, perm_code) KEY(role_code, perm_code) VALUES ('OPS', 'issue:manage');
+MERGE INTO admin_role_permission (role_code, perm_code) KEY(role_code, perm_code) VALUES ('SKILL_MANAGER', 'issue:read');
+MERGE INTO admin_role_permission (role_code, perm_code) KEY(role_code, perm_code) VALUES ('VIEWER', 'issue:read');

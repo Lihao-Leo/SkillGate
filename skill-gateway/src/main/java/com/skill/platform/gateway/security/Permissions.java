@@ -30,6 +30,8 @@ public final class Permissions {
     public static final String SYSCONFIG_MANAGE = "sysconfig:manage";
     public static final String CONSUMPTION_READ = "consumption:read";
     public static final String CONSUMPTION_MANAGE = "consumption:manage";
+    public static final String ISSUE_READ = "issue:read";
+    public static final String ISSUE_MANAGE = "issue:manage";
 
     private Permissions() {
     }
@@ -44,6 +46,7 @@ public final class Permissions {
         return Set.of(METRICS_READ, SKILL_READ, SKILL_UPLOAD, SKILL_REVIEW, SKILL_PUBLISH,
                 SKILL_ROLLBACK, SKILL_DELETE, EXECUTION_READ, EXECUTION_MANAGE, ALERT_READ,
                 ALERT_MANAGE, MODEL_READ, MODEL_MANAGE, KB_MANAGE, KEY_READ, KEY_MANAGE,
-                USER_MANAGE, SYSCONFIG_READ, SYSCONFIG_MANAGE, CONSUMPTION_READ, CONSUMPTION_MANAGE);
+                USER_MANAGE, SYSCONFIG_READ, SYSCONFIG_MANAGE, CONSUMPTION_READ,
+                CONSUMPTION_MANAGE, ISSUE_READ, ISSUE_MANAGE);
     }
 }

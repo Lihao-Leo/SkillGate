@@ -34,6 +34,7 @@ import java.util.Map;
 public class AdminSkillController {
 
     private final SkillService skillService;
+    private final com.skill.platform.gateway.service.MetricsService metricsService;
 
     /** 跨租户技能列表（skill:read）。 */
     @GetMapping
@@ -54,6 +55,16 @@ public class AdminSkillController {
     public ApiResponse<SkillDetail> detail(@PathVariable String tenantId,
                                            @PathVariable String skillCode) {
         return ApiResponse.ok(skillService.detailForAdmin(tenantId, skillCode));
+    }
+
+    /** 单 Skill 监控（V2.3）：汇总 + 按日趋势 + 版本分布（skill:read）。 */
+    @GetMapping("/{tenantId}/{skillCode}/monitor")
+    @RequirePermission(Permissions.SKILL_READ)
+    public ApiResponse<java.util.Map<String, Object>> skillMonitor(
+            @PathVariable String tenantId,
+            @PathVariable String skillCode,
+            @RequestParam(name = "hours", defaultValue = "168") int hours) {
+        return ApiResponse.ok(metricsService.skillMonitor(skillCode, hours));
     }
 
     /** 上传新版本（skill:upload；operator=admin username）。 */

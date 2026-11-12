@@ -129,6 +129,110 @@ export interface ModelCallView {
   createdAt: string
 }
 
+export interface BudgetPayload {
+  scopeType: string
+  scopeValue?: string
+  amountPoints: number
+  alertThresholdPct?: number
+  enabled?: number
+}
+
+// ---- 双层限流配额（V2.3）----
+export interface TenantQuotaView {
+  tenantId: string
+  qps: number | null
+  maxRunning: number | null
+  dailyLimit: number | null
+  remark: string
+}
+
+export interface KeyQuotaPayload {
+  qps?: number | null
+  maxRunning?: number | null
+  dailyLimit?: number | null
+}
+
+// ---- 问题工单类型（V2.3，对齐 IssueService）----
+export interface IssueView {
+  id: number
+  ticketNo: string
+  title: string
+  type: string
+  severity: string
+  status: string
+  sourceId: string | null
+  relatedTaskId: string | null
+  tenantId: string | null
+  skillCode: string | null
+  description: string | null
+  rootCause: string | null
+  resolution: string | null
+  assignee: string | null
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+  closedAt: string | null
+}
+
+export interface IssueCreatePayload {
+  title: string
+  type: string
+  severity?: string
+  sourceId?: string
+  relatedTaskId?: string
+  tenantId?: string
+  skillCode?: string
+  description?: string
+  assignee?: string
+}
+
+export interface IssuePage {
+  total: number
+  pageNo: number
+  pageSize: number
+  records: IssueView[]
+}
+
+// ---- 单 Skill 监控 / 日志查询（V2.3）----
+export interface SkillMonitorView {
+  summary: {
+    total: number
+    succeeded: number
+    failed: number
+    successRate: number | null
+    avgDurationMs: number
+    avgTokens: number
+  }
+  daily: { day: string; total: number; succeeded: number; failed: number; avgDurationMs: number }[]
+  versions: { skill_version: string; cnt: number; succeeded: number; avgDurationMs: number }[]
+  costPoints: number
+}
+
+export interface SkillIoLogView {
+  id: number
+  skillCode: string
+  version: string | null
+  status: string
+  durationMs: number | null
+  callerHint: string | null
+  createdAt: string
+  input?: string | null
+  output?: string | null
+}
+
+export interface ExecutionEventSearchView {
+  id: number
+  taskId: string
+  stage: string
+  status: string
+  service: string
+  durationMs: number | null
+  detail: string | null
+  traceId: string | null
+  occurredAt: string
+}
+
+/** 产物内容预览响应（V2.1）：content 为 UTF-8 文本，truncated=超上限截断。 */
 export interface ArtifactContentView {
   artifactId: string
   type: string
@@ -136,6 +240,14 @@ export interface ArtifactContentView {
   sizeBytes: number | null
   content: string
   truncated: boolean
+}
+
+/** MP Page 序列化形状（分页数据通用） */
+export interface MPPage<T> {
+  records: T[]
+  total: number
+  size: number
+  current: number
 }
 
 // ---- 消耗看板类型（V2.2，对齐 ConsumptionService / budget 表）----
@@ -531,6 +643,69 @@ export const gatewayApi = (() => {
       client.adminJson<void>('DELETE', `/api/v1/admin/budgets/${id}`),
     budgetUpdateStatus: (id: number, enabled: 0 | 1) =>
       client.adminJson<BudgetStatusView>('PUT', `/api/v1/admin/budgets/${id}/status`, { enabled }),
+
+    // ---- 双层限流配额（V2.3）----
+    adminUpdateKeyQuota: (appKeyId: string, payload: KeyQuotaPayload) =>
+      client.adminJson<{ appKeyId: string; quota: string }>('PUT',
+        `/api/v1/admin/app-keys/${encodeURIComponent(appKeyId)}/quota`, payload),
+    adminListTenantQuotas: () =>
+      client.adminJson<TenantQuotaView[]>('GET', '/api/v1/admin/tenant-quotas'),
+    adminUpsertTenantQuota: (tenantId: string, payload: {
+      qps?: number | null; maxRunning?: number | null; dailyLimit?: number | null; remark?: string
+    }) =>
+      client.adminJson<TenantQuotaView>('PUT',
+        `/api/v1/admin/tenant-quotas/${encodeURIComponent(tenantId)}`, payload),
+    adminDeleteTenantQuota: (tenantId: string) =>
+      client.adminJson<void>('DELETE', `/api/v1/admin/tenant-quotas/${encodeURIComponent(tenantId)}`),
+
+    // ---- 问题工单（V2.3）----
+    adminListIssues: (opts: { status?: string; type?: string; severity?: string;
+      assignee?: string; keyword?: string; pageNo: number; pageSize: number }) =>
+      client.adminJson<IssuePage>('GET', '/api/v1/admin/issues' + buildQuery({
+        status: opts.status || undefined,
+        type: opts.type || undefined,
+        severity: opts.severity || undefined,
+        assignee: opts.assignee || undefined,
+        keyword: opts.keyword || undefined,
+        pageNo: opts.pageNo, pageSize: opts.pageSize,
+      })),
+    adminGetIssue: (id: number) =>
+      client.adminJson<Record<string, any>>('GET', `/api/v1/admin/issues/${id}`),
+    adminCreateIssue: (payload: IssueCreatePayload) =>
+      client.adminJson<{ issue: IssueView; alreadyExists: boolean }>(
+        'POST', '/api/v1/admin/issues', payload),
+    adminUpdateIssue: (id: number, payload: Partial<IssueCreatePayload>) =>
+      client.adminJson<IssueView>('PUT', `/api/v1/admin/issues/${id}`, payload),
+    adminTransitionIssue: (id: number, targetStatus: string, assignee?: string,
+                           resolution?: string) =>
+      client.adminJson<IssueView>('POST', `/api/v1/admin/issues/${id}/transition`,
+        { targetStatus, assignee, resolution }),
+    adminListIssuesBySource: (type: string, sourceId: string) =>
+      client.adminJson<IssueView[]>('GET', '/api/v1/admin/issues/by-source' + buildQuery({
+        type, sourceId,
+      })),
+
+    // ---- 单 Skill 监控 / 日志查询（V2.3）----
+    adminSkillMonitor: (tenantId: string, skillCode: string, hours: number) =>
+      client.adminJson<SkillMonitorView>('GET',
+        `/api/v1/admin/skills/${encodeURIComponent(tenantId)}/${encodeURIComponent(skillCode)}`
+        + `/monitor?hours=${hours}`),
+    adminListIoLogs: (opts: { skillCode?: string; status?: string; pageNo: number;
+      pageSize: number }) =>
+      client.adminJson<MPPage<SkillIoLogView>>('GET', '/api/v1/admin/io-logs' + buildQuery({
+        skillCode: opts.skillCode || undefined,
+        status: opts.status || undefined,
+        pageNo: opts.pageNo, pageSize: opts.pageSize,
+      })),
+    adminSearchExecutionEvents: (opts: { taskId?: string; stage?: string; status?: string;
+      pageNo?: number; pageSize?: number }) =>
+      client.adminJson<MPPage<ExecutionEventSearchView>>('GET',
+        '/api/v1/admin/execution-events/search' + buildQuery({
+          taskId: opts.taskId || undefined,
+          stage: opts.stage || undefined,
+          status: opts.status || undefined,
+          pageNo: opts.pageNo ?? 1, pageSize: opts.pageSize ?? 50,
+        })),
 
     // ---- 模型目录与连通性（V2.1）----
     adminModelCatalog: () =>

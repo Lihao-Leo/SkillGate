@@ -322,6 +322,53 @@ public class AdminController {
     }
 
     // ------------------------------------------------------------------
+    // V2.3：Key 级 / 租户汇总 双层限流配额
+    // ------------------------------------------------------------------
+
+    /** 改 Key 级配额（qps/maxRunning/dailyLimit，null=跟随全局默认；实时生效） */
+    @PutMapping("/app-keys/{appKeyId}/quota")
+    @RequirePermission(Permissions.KEY_MANAGE)
+    public ApiResponse<Map<String, Object>> updateKeyQuota(
+            @PathVariable String appKeyId, @RequestBody Map<String, Object> request) {
+        Integer qps = quotaValue(request.get("qps"));
+        Integer maxRunning = quotaValue(request.get("maxRunning"));
+        Integer dailyLimit = quotaValue(request.get("dailyLimit"));
+        return ApiResponse.ok(appKeyAdminService.updateQuota(appKeyId, qps, maxRunning, dailyLimit));
+    }
+
+    /** 租户汇总配额列表（双层限流第 2 层） */
+    @GetMapping("/tenant-quotas")
+    @RequirePermission(Permissions.KEY_READ)
+    public ApiResponse<java.util.List<Map<String, Object>>> listTenantQuotas() {
+        return ApiResponse.ok(appKeyAdminService.listTenantQuotas());
+    }
+
+    /** 租户汇总配额 upsert（存在则更新、不存在插入；字段 null=该维度不限） */
+    @PutMapping("/tenant-quotas/{tenantId}")
+    @RequirePermission(Permissions.KEY_MANAGE)
+    public ApiResponse<Map<String, Object>> upsertTenantQuota(
+            @PathVariable String tenantId, @RequestBody Map<String, Object> request) {
+        return ApiResponse.ok(appKeyAdminService.upsertTenantQuota(tenantId,
+                quotaValue(request.get("qps")), quotaValue(request.get("maxRunning")),
+                quotaValue(request.get("dailyLimit")),
+                request.get("remark") == null ? "" : String.valueOf(request.get("remark"))));
+    }
+
+    /** 删除租户汇总配额（该租户恢复仅 Key 级限流） */
+    @DeleteMapping("/tenant-quotas/{tenantId}")
+    @RequirePermission(Permissions.KEY_MANAGE)
+    public ApiResponse<Void> deleteTenantQuota(@PathVariable String tenantId) {
+        appKeyAdminService.deleteTenantQuota(tenantId);
+        return ApiResponse.ok();
+    }
+
+    private static Integer quotaValue(Object value) {
+        if (value == null || String.valueOf(value).isBlank()) return null;
+        return Integer.parseInt(String.valueOf(value));
+    }
+
+
+    // ------------------------------------------------------------------
     // V2.1：模型调用明细 + 产物在线预览
     // ------------------------------------------------------------------
 

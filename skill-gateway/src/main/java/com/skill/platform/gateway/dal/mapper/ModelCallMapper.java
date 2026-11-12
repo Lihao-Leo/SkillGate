@@ -18,4 +18,9 @@ public interface ModelCallMapper extends BaseMapper<ModelCall> {
     /** 时间窗内折算费用合计（监控：costPointsWindow） */
     @Select("SELECT COALESCE(SUM(cost_points), 0) FROM model_call WHERE created_at >= #{since}")
     java.math.BigDecimal sumCostSince(String since);
+
+    /** 单 Skill 时间窗内折算费用合计（单 Skill 监控 / 首页） */
+    @Select("SELECT COALESCE(SUM(cost_points), 0) FROM model_call "
+            + "WHERE skill_code = #{skillCode} AND created_at >= #{since}")
+    java.math.BigDecimal sumCostBySkillSince(String skillCode, String since);
 }

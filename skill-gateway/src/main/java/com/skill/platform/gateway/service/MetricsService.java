@@ -171,6 +171,80 @@ public class MetricsService {
     }
 
     public Map<String, Object> overview() {
+        return overviewMonitorData(LocalDateTime.now().minusHours(24));
+    }
+
+    /** 单 Skill 监控（V2.3）：汇总 + 按日趋势 + 版本分布（走 idx_skill_created）。 */
+    public Map<String, Object> skillMonitor(String skillCode, int hours) {
+        LocalDateTime since = LocalDateTime.now().minusHours(Math.min(Math.max(hours, 1), 720));
+        Map<String, Object> result = new LinkedHashMap<>();
+
+        long total = executionMapper.selectCount(new LambdaQueryWrapper<Execution>()
+                .eq(Execution::getSkillCode, skillCode)
+                .ge(Execution::getCreatedAt, since));
+        long succeeded = executionMapper.selectCount(new LambdaQueryWrapper<Execution>()
+                .eq(Execution::getSkillCode, skillCode)
+                .eq(Execution::getStatus, Execution.STATUS_SUCCEEDED)
+                .ge(Execution::getCreatedAt, since));
+        long failed = executionMapper.selectCount(new LambdaQueryWrapper<Execution>()
+                .eq(Execution::getSkillCode, skillCode)
+                .eq(Execution::getStatus, Execution.STATUS_FAILED)
+                .ge(Execution::getCreatedAt, since));
+
+        List<Execution> rows = executionMapper.selectList(new LambdaQueryWrapper<Execution>()
+                .eq(Execution::getSkillCode, skillCode)
+                .ge(Execution::getCreatedAt, since)
+                .select(Execution::getDurationMs, Execution::getTokensUsed, Execution::getSkillVersion,
+                        Execution::getStatus, Execution::getCreatedAt));
+
+        double avgDuration = rows.stream()
+                .mapToLong(e -> e.getDurationMs() == null ? 0L : e.getDurationMs()).average().orElse(0);
+        double avgTokens = rows.stream()
+                .mapToLong(e -> e.getTokensUsed() == null ? 0L : e.getTokensUsed()).average().orElse(0);
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("total", total);
+        summary.put("succeeded", succeeded);
+        summary.put("failed", failed);
+        summary.put("successRate", total == 0 ? null
+                : Math.round(succeeded * 1000.0 / total) / 10.0);
+        summary.put("avgDurationMs", Math.round(avgDuration));
+        summary.put("avgTokens", Math.round(avgTokens));
+        result.put("summary", summary);
+
+        // 按日趋势（GROUP BY 表达式不带别名，H2/MySQL 双兼容）
+        var dailyRows = executionMapper.selectMaps(
+                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<Execution>()
+                        .select("DATE(created_at) AS day",
+                                "COUNT(*) AS total",
+                                "SUM(CASE WHEN status = 'SUCCEEDED' THEN 1 ELSE 0 END) AS succeeded",
+                                "SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) AS failed",
+                                "COALESCE(AVG(duration_ms), 0) AS avgDurationMs")
+                        .eq("skill_code", skillCode)
+                        .ge("created_at", since)
+                        .groupBy("DATE(created_at)")
+                        .orderByAsc("DATE(created_at)"));
+        result.put("daily", dailyRows);
+
+        // 版本分布
+        var versionRows = executionMapper.selectMaps(
+                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<Execution>()
+                        .select("skill_version",
+                                "COUNT(*) AS cnt",
+                                "SUM(CASE WHEN status = 'SUCCEEDED' THEN 1 ELSE 0 END) AS succeeded",
+                                "COALESCE(AVG(duration_ms), 0) AS avgDurationMs")
+                        .eq("skill_code", skillCode)
+                        .ge("created_at", since)
+                        .groupBy("skill_version")
+                        .orderByDesc("cnt"));
+        result.put("versions", versionRows);
+
+        // 总成本（model_call 同窗聚合，走 idx_mc_skill_created）
+        result.put("costPoints", modelCallMapper.sumCostBySkillSince(skillCode, since.toString().replace('T', ' ')));
+        return result;
+    }
+
+    private Map<String, Object> overviewMonitorData(LocalDateTime since) {
         LocalDateTime dayStart = LocalDate.now().atStartOfDay();
         Map<String, Object> metrics = new LinkedHashMap<>();
         metrics.put("pending", count(Execution.STATUS_PENDING, null));

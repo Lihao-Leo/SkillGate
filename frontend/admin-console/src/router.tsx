@@ -2,6 +2,8 @@ import { createBrowserRouter, Navigate } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { hasPerm, useAuthStore } from './stores/auth'
 import AdminLayout from './layouts/AdminLayout'
+import IssuesPage from './pages/Issues'
+import LogsPage from './pages/Logs'
 import LoginPage from './pages/Login'
 import HomePage from './pages/Home'
 import ConnectPage from './pages/Connect'
@@ -111,6 +113,22 @@ export const router = createBrowserRouter([
         element: (
           <RequirePerm perm="alert:read">
             <AlertsPage />
+          </RequirePerm>
+        ),
+      },
+      {
+        path: '/issues',
+        element: (
+          <RequirePerm perm="issue:read">
+            <IssuesPage />
+          </RequirePerm>
+        ),
+      },
+      {
+        path: '/logs',
+        element: (
+          <RequirePerm perm="execution:read">
+            <LogsPage />
           </RequirePerm>
         ),
       },
