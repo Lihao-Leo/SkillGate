@@ -100,16 +100,29 @@ export default function ExecutionsPage() {
     }
   }
 
-  /** 表头排序（时长/tokens 降序排查最耗时、最贵任务） */
-  function onTableChange(_pagination: TablePaginationConfig, _filters: unknown,
-                         sorter: any) {
-    const field = String(sorter?.field ?? '')
-    const sortBy = field === 'durationMs' && sorter?.order
-      ? 'duration'
-      : field === 'tokensUsed' && sorter?.order ? 'tokens' : ''
-    const next = { ...filters, sortBy }
+  /**
+   * 筛选变更统一入口：合并 patch 后立即加载（第 1 页）。
+   * 修复：状态/仅看失败等控件只改 state 不触发加载，导致筛选"不生效"。
+   */
+  function applyWith(patch: Partial<typeof filters>) {
+    const next = { ...filters, ...patch }
     setFilters(next)
     loadRecent(range, next, 1, recent.pageSize)
+  }
+
+  /** 表头排序（时长/tokens 降序排查最耗时、最贵任务）；翻页（无 sorter.order）保留排序与页码。 */
+  function onTableChange(pagination: TablePaginationConfig, _filters: unknown,
+                         sorter: any) {
+    const field = String(sorter?.field ?? '')
+    if (field === 'durationMs' || field === 'tokensUsed') {
+      const sortBy = sorter?.order
+        ? field === 'durationMs' ? 'duration' : 'tokens'
+        : ''
+      applyWith({ sortBy })
+      return
+    }
+    // 纯翻页：保留当前筛选与排序
+    loadRecent(range, filters, pagination.current ?? 1, pagination.pageSize ?? recent.pageSize)
   }
 
   /** 管理台强制终止：立即杀沙箱，按已发生用量结算/退款（worker 不可达时由看门狗兜底收殓） */
@@ -137,7 +150,7 @@ export default function ExecutionsPage() {
   }
 
   function applyFilters() {
-    loadRecent(range, filters, 1, recent.pageSize)
+    applyWith({})
   }
 
   function setRange(r: Range) {
@@ -543,23 +556,29 @@ export default function ExecutionsPage() {
                         allowClear
                         style={{ width: 130 }}
                         disabled={filters.onlyFailed}
-                        onChange={(v) => setFilters((prev) => ({ ...prev, status: v ?? '' }))}
+                        onChange={(v) => applyWith({ status: v ?? '' })}
                         options={Object.entries(statusMeta).map(([value, m]) => (
                           { value, label: m.label }))}
                       />
                       <Input value={filters.skill} placeholder="Skill 搜索" allowClear
                              style={{ width: 170 }}
-                             onChange={(e) => setFilters((prev) => ({ ...prev, skill: e.target.value }))}
-                             onPressEnter={applyFilters} />
+                             onChange={(e) => {
+                               const v = e.target.value
+                               setFilters((prev) => ({ ...prev, skill: v }))
+                               // 清空（allowClear ×）即刷
+                               if (v === '' && filters.skill !== '') applyWith({ skill: '' })
+                             }}
+                             onPressEnter={() => applyWith({ skill: filters.skill })} />
                       <Input value={filters.tenant} placeholder="租户" allowClear
                              style={{ width: 150 }}
-                             onChange={(e) => setFilters((prev) => ({ ...prev, tenant: e.target.value }))}
-                             onPressEnter={applyFilters} />
+                             onChange={(e) => {
+                               const v = e.target.value
+                               setFilters((prev) => ({ ...prev, tenant: v }))
+                               if (v === '' && filters.tenant !== '') applyWith({ tenant: '' })
+                             }}
+                             onPressEnter={() => applyWith({ tenant: filters.tenant })} />
                       <Checkbox checked={filters.onlyFailed}
-                                onChange={(e) => setFilters((prev) => ({
-                                  ...prev,
-                                  onlyFailed: e.target.checked,
-                                }))}
+                                onChange={(e) => applyWith({ onlyFailed: e.target.checked })}
                       >仅看失败</Checkbox>
                       <Button type="primary" size="small" onClick={applyFilters}>筛选</Button>
                       <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>

@@ -371,6 +371,20 @@ export default function SkillsPage() {
 
   async function toggleVisibility(row: SkillSummary) {
     const target = row.visibility === 'PUBLIC' ? 'PRIVATE' : 'PUBLIC'
+    const ok = await new Promise<boolean>((resolve) => {
+      modal.confirm({
+        title: target === 'PUBLIC' ? '上架确认' : '下架确认',
+        content: target === 'PUBLIC'
+          ? `将「${row.skillCode}」上架到公开市场？上架后所有租户均可查看并发起调用（按其定价扣点）。`
+          : `将「${row.skillCode}」从公开市场下架？下架后其他租户无法再发起调用，历史任务不受影响。`,
+        okText: target === 'PUBLIC' ? '确认上架' : '确认下架',
+        okButtonProps: target === 'PUBLIC' ? {} : { danger: true },
+        cancelText: '取消',
+        onOk: () => resolve(true),
+        onCancel: () => resolve(false),
+      })
+    })
+    if (!ok) return
     try {
       await gatewayApi.adminSetVisibility(row.tenantId, row.skillCode,
         target as 'PUBLIC' | 'PRIVATE')
