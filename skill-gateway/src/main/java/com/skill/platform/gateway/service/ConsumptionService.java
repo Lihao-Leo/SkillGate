@@ -54,22 +54,22 @@ public class ConsumptionService {
 
     /** 按 Skill 聚合排行。 */
     public List<Map<String, Object>> bySkill(Criteria criteria) {
-        return groupBy(criteria, "skill_code", "costPoints");
+        return groupBy(criteria, "skill_code", "skill_code", "costPoints");
     }
 
     /** 按模型聚合排行（alias + provider）。 */
     public List<Map<String, Object>> byModel(Criteria criteria) {
-        return groupBy(criteria, "alias, provider", "costPoints");
+        return groupBy(criteria, "alias, provider", "alias, provider", "costPoints");
     }
 
     /** 按租户聚合排行。 */
     public List<Map<String, Object>> byTenant(Criteria criteria) {
-        return groupBy(criteria, "tenant_id", "costPoints");
+        return groupBy(criteria, "tenant_id", "tenant_id", "costPoints");
     }
 
     /** 日趋势（tokens / cost / calls 按日）。 */
     public List<Map<String, Object>> daily(Criteria criteria) {
-        return groupBy(criteria, "DATE(created_at) AS day", "day");
+        return groupBy(criteria, "DATE(created_at) AS day", "DATE(created_at)", "day");
     }
 
     /**
@@ -229,10 +229,11 @@ public class ConsumptionService {
         return wrapper;
     }
 
-    private List<Map<String, Object>> groupBy(Criteria c, String groupExpr, String orderBy) {
+    private List<Map<String, Object>> groupBy(Criteria c, String selectExpr, String groupExpr,
+                                              String orderBy) {
         QueryWrapper<ModelCall> wrapper = baseWrapper(c);
         wrapper.select(
-                groupExpr,
+                selectExpr,
                 "COALESCE(SUM(total_tokens),0) AS tokens",
                 "COALESCE(SUM(cost_points),0) AS costPoints",
                 "COUNT(*) AS calls",
